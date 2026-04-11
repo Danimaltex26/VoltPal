@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { apiUpload } from '../utils/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import OfflineQueue from '../components/OfflineQueue';
+import useOfflineQueue from '../hooks/useOfflineQueue';
 
 const AI_MESSAGES = [
   'Analyzing your electrical photo...',
@@ -31,7 +33,9 @@ export default function AnalysisPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [queued, setQueued] = useState(false);
   const fileInputRef = useRef(null);
+  const offlineQueue = useOfflineQueue();
 
   async function handleUpload(e) {
     const files = e.target.files;
@@ -39,8 +43,18 @@ export default function AnalysisPage() {
 
     setError('');
     setResult(null);
-    setLoading(true);
+    setQueued(false);
 
+    // If offline, queue it
+    if (!navigator.onLine) {
+      await offlineQueue.enqueue(files, analysisType);
+      setQueued(true);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Online — upload directly
+    setLoading(true);
     const formData = new FormData();
     for (let i = 0; i < Math.min(files.length, 4); i++) {
       formData.append('images', files[i]);
@@ -51,16 +65,31 @@ export default function AnalysisPage() {
       const data = await apiUpload('/analysis', formData);
       setResult(data.result);
     } catch (err) {
-      setError(err.message || 'Failed to analyze. Please try again.');
+      // If upload fails (network dropped mid-request), queue it
+      if (!navigator.onLine || err.message?.includes('fetch') || err.message?.includes('network')) {
+        await offlineQueue.enqueue(files, analysisType);
+        setQueued(true);
+      } else {
+        setError(err.message || 'Failed to analyze. Please try again.');
+      }
     } finally {
       setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
   function handleReset() {
     setResult(null);
     setError('');
+    setQueued(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function handleViewQueueResult(item) {
+    if (item.result) {
+      setResult(item.result);
+      offlineQueue.dismiss(item.id);
+    }
   }
 
   if (loading) {
@@ -189,6 +218,20 @@ export default function AnalysisPage() {
           </p>
         </div>
 
+        {/* Offline indicator */}
+        {!navigator.onLine && (
+          <div className="warning-box" style={{ fontSize: '0.875rem' }}>
+            You are offline. Photos will be queued and processed automatically when you reconnect.
+          </div>
+        )}
+
+        {/* Queued confirmation */}
+        {queued && (
+          <div className="info-box" style={{ fontSize: '0.875rem' }}>
+            Photo queued! It will be processed automatically when you're back online.
+          </div>
+        )}
+
         {error && <div className="error-banner">{error}</div>}
 
         {/* Analysis Type */}
@@ -239,7 +282,7 @@ export default function AnalysisPage() {
           </svg>
           <div>
             <p style={{ fontSize: '1.0625rem', fontWeight: 600 }}>
-              Tap to upload or take a photo
+              {navigator.onLine ? 'Tap to upload or take a photo' : 'Tap to capture and queue a photo'}
             </p>
             <p className="text-muted" style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>
               Photo of panels, wiring, motors, or equipment (up to 4)
@@ -255,6 +298,16 @@ export default function AnalysisPage() {
             style={{ display: 'none' }}
           />
         </label>
+
+        {/* Offline Queue */}
+        <OfflineQueue
+          queue={offlineQueue.queue}
+          processing={offlineQueue.processing}
+          onRetry={offlineQueue.retry}
+          onDismiss={offlineQueue.dismiss}
+          onViewResult={handleViewQueueResult}
+          onClearCompleted={offlineQueue.clearCompleted}
+        />
       </div>
     </div>
   );

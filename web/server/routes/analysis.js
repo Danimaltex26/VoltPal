@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import auth from "../middleware/auth.js";
 import { ELECTRICAL_ANALYSIS_SYSTEM_PROMPT } from "../prompts/analysis.js";
+import { sendAnalysisReadyEmail } from "../utils/email.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
@@ -133,6 +134,14 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
       console.error("Save error:", saveError);
       return res.json({ result, saved: false, save_error: saveError.message });
     }
+
+    // Send email notification (fire-and-forget, don't block response)
+    sendAnalysisReadyEmail({
+      to: req.user.email,
+      appKey: "voltpal",
+      displayName: req.profile.display_name,
+      analysisType: result.analysis_type || analysis_type || "general",
+    }).catch(() => {});
 
     return res.json({ result, record_id: saved.id });
   } catch (err) {
