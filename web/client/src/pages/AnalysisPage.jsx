@@ -32,6 +32,7 @@ export default function AnalysisPage() {
   const [analysisType, setAnalysisType] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [model, setModel] = useState('');
   const [error, setError] = useState('');
   const [queued, setQueued] = useState(false);
   const fileInputRef = useRef(null);
@@ -64,6 +65,7 @@ export default function AnalysisPage() {
     try {
       const data = await apiUpload('/analysis', formData);
       setResult(data.result);
+      setModel(data.model || '');
     } catch (err) {
       // If upload fails (network dropped mid-request), queue it
       if (!navigator.onLine || err.message?.includes('fetch') || err.message?.includes('network')) {
@@ -80,6 +82,7 @@ export default function AnalysisPage() {
 
   function handleReset() {
     setResult(null);
+    setModel('');
     setError('');
     setQueued(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -105,7 +108,7 @@ export default function AnalysisPage() {
       <div className="page">
         <div className="stack">
           <div className="page-header">
-            <h2>Analysis Result</h2>
+            <h2 style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>Analysis Result {model && <span style={{ fontSize: '0.6875rem', fontWeight: 400, color: '#6B6B73' }}>{model}</span>}</h2>
           </div>
 
           {result.plain_english_summary && (

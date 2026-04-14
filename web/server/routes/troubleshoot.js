@@ -113,10 +113,10 @@ router.post("/", auth, async (req, res) => {
 
     if (saveError) {
       console.error("Save error:", saveError);
-      return res.json({ result, saved: false });
+      return res.json({ result, saved: false, model: aiResult.model });
     }
 
-    return res.json({ result, session_id: saved.id });
+    return res.json({ result, session_id: saved.id, model: aiResult.model });
   } catch (err) {
     console.error("Troubleshoot error:", err);
     return res.status(500).json({ error: "Internal server error" });

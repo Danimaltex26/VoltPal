@@ -55,6 +55,7 @@ export default function ReferencePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState(null);
+  const [model, setModel] = useState('');
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -64,6 +65,7 @@ export default function ReferencePage() {
     try {
       const data = await apiPost('/reference/query', { query });
       setResults(data.results || data.result || data);
+      setModel(data.model || '');
     } catch (err) {
       setError(err.message || 'Search failed.');
     } finally {
@@ -141,6 +143,8 @@ export default function ReferencePage() {
               <div className="spinner" />
             </div>
           )}
+
+          {results && model && <div style={{ fontSize: '0.6875rem', color: '#6B6B73', marginBottom: '-0.5rem' }}>{model}</div>}
 
           {results && (Array.isArray(results) ? results : [results]).map((r, i) => {
             const content = r.content_json || {};
