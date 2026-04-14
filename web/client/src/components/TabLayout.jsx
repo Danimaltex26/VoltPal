@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { getQueueByStatus } from '../utils/offlineDb';
+import { apiGet } from '../utils/api';
 
 function useQueueBadge() {
   const [count, setCount] = useState(0);
@@ -64,6 +65,7 @@ const TABS = [
   {
     to: '/training',
     label: 'Train',
+    requiresPro: true,
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
@@ -87,6 +89,13 @@ const ACTIVE_COLOR = '#FACC15';
 
 export default function TabLayout() {
   const badgeCount = useQueueBadge();
+  const [isPro, setIsPro] = useState(false);
+
+  useEffect(() => {
+    apiGet('/profile').then(function (data) {
+      setIsPro(data.subscription_tier === 'pro');
+    }).catch(function () {});
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -120,7 +129,7 @@ export default function TabLayout() {
         borderTop: '1px solid rgba(255,255,255,0.08)',
         zIndex: 100,
       }}>
-        {TABS.map((tab) => (
+        {TABS.filter(function (tab) { return !tab.requiresPro || isPro; }).map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
