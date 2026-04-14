@@ -108,7 +108,8 @@ export default function AnalysisPage() {
       <div className="page">
         <div className="stack">
           <div className="page-header">
-            <h2 style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>Analysis Result {model && <span style={{ fontSize: '0.6875rem', fontWeight: 400, color: '#6B6B73' }}>{model}</span>}</h2>
+            <h2>Analysis Result</h2>
+            {model && <div style={{ fontSize: '0.6875rem', color: '#6B6B73', marginTop: '0.25rem' }}>{model}</div>}
           </div>
 
           {result.plain_english_summary && (
