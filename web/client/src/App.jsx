@@ -10,6 +10,14 @@ import ReferencePage from './pages/ReferencePage';
 import HistoryPage from './pages/HistoryPage';
 import ProfilePage from './pages/ProfilePage';
 import LearnPage from './pages/LearnPage';
+import TrainingHome from './pages/training/TrainingHome';
+import ModuleList from './pages/training/ModuleList';
+import ModuleContent from './pages/training/ModuleContent';
+import ExamSelection from './pages/training/ExamSelection';
+import ExamEngine from './pages/training/ExamEngine';
+import ExamScoreReport from './pages/training/ExamScoreReport';
+import ReadinessDashboard from './pages/training/ReadinessDashboard';
+import SpacedRepetitionQueue from './pages/training/SpacedRepetitionQueue';
 
 export default function App() {
   return (
@@ -31,6 +39,14 @@ export default function App() {
           <Route path="reference" element={<ReferencePage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="learn" element={<LearnPage />} />
+          <Route path="training" element={<TrainingHome />} />
+          <Route path="training/sr" element={<SpacedRepetitionQueue />} />
+          <Route path="training/:certLevel" element={<ModuleList />} />
+          <Route path="training/:certLevel/readiness" element={<ReadinessDashboard />} />
+          <Route path="training/:certLevel/exam" element={<ExamSelection />} />
+          <Route path="training/:certLevel/exam/run" element={<ExamEngine />} />
+          <Route path="training/:certLevel/exam/score/:attemptId" element={<ExamScoreReport />} />
+          <Route path="training/:certLevel/:moduleId" element={<ModuleContent />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
