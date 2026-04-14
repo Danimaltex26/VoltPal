@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { createClient } from "@supabase/supabase-js";
-import Anthropic from "@anthropic-ai/sdk";
 import auth from "../middleware/auth.js";
 import { REFERENCE_SYSTEM_PROMPT } from "../prompts/reference.js";
+import { callClaude } from "../utils/claudeClient.js";
+import { requiresSpecificClause } from "../utils/modelRouter.js";
 
 const router = Router();
 
@@ -11,8 +12,6 @@ const supabaseService = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   { db: { schema: "voltpal" } }
 );
-
-const anthropic = new Anthropic();
 
 router.post("/query", auth, async (req, res) => {
   try {
@@ -78,19 +77,13 @@ router.post("/query", auth, async (req, res) => {
     }
 
     // Step 2 — Claude
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
-      system: REFERENCE_SYSTEM_PROMPT,
+    var feature = requiresSpecificClause(searchTerm) ? 'code_citation' : 'reference_lookup';
+    var aiResult = await callClaude({
+      feature: feature,
+      systemPrompt: REFERENCE_SYSTEM_PROMPT,
       messages: [{ role: "user", content: query }],
     });
-
-    if (message.stop_reason === "max_tokens") {
-      console.error("Reference response truncated (max_tokens)");
-      return res.status(500).json({ error: "AI response was too long. Please try a more specific question." });
-    }
-
-    const rawText = message.content[0].text;
+    var rawText = aiResult.content;
     let result;
     try {
       const stripped = rawText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();

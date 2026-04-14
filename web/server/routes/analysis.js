@@ -1,8 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
-import Anthropic from "@anthropic-ai/sdk";
 import auth from "../middleware/auth.js";
+import { callClaude } from "../utils/claudeClient.js";
 import { ELECTRICAL_ANALYSIS_SYSTEM_PROMPT } from "../prompts/analysis.js";
 import { sendAnalysisReadyEmail } from "../utils/email.js";
 
@@ -14,8 +14,6 @@ const supabaseService = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   { db: { schema: "voltpal" } }
 );
-
-const anthropic = new Anthropic();
 
 router.post("/", auth, upload.array("images", 4), async (req, res) => {
   try {
@@ -80,19 +78,12 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
       text: `Analyze this electrical equipment photo. Analysis type hint: ${analysis_type || "general"}. Return your analysis as the specified JSON object.`,
     });
 
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 4096,
-      system: ELECTRICAL_ANALYSIS_SYSTEM_PROMPT,
+    var aiResult = await callClaude({
+      feature: 'photo_diagnosis',
+      systemPrompt: ELECTRICAL_ANALYSIS_SYSTEM_PROMPT,
       messages: [{ role: "user", content: imageContent }],
     });
-
-    if (message.stop_reason === "max_tokens") {
-      console.error("Analysis response truncated (max_tokens)");
-      return res.status(500).json({ error: "AI response was too long. Please try again." });
-    }
-
-    const rawText = message.content[0].text;
+    var rawText = aiResult.content;
     let result;
     try {
       const stripped = rawText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
