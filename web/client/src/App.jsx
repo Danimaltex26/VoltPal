@@ -9,6 +9,7 @@ import TroubleshootPage from './pages/TroubleshootPage';
 import ReferencePage from './pages/ReferencePage';
 import HistoryPage from './pages/HistoryPage';
 import ProfilePage from './pages/ProfilePage';
+import LearnPage from './pages/LearnPage';
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="troubleshoot" element={<TroubleshootPage />} />
           <Route path="reference" element={<ReferencePage />} />
           <Route path="history" element={<HistoryPage />} />
+          <Route path="learn" element={<LearnPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
