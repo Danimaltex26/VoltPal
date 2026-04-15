@@ -62,6 +62,7 @@ export default function useOfflineQueue() {
           if (item.analysis_type) {
             formData.append('analysis_type', item.analysis_type);
           }
+          formData.append('queued', 'true');
 
           const data = await apiUpload('/analysis', formData);
 
