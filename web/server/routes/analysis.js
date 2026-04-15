@@ -2,9 +2,8 @@ import { Router } from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import auth from "../middleware/auth.js";
-import { callClaude } from "../utils/claudeClient.js";
-import { ELECTRICAL_ANALYSIS_SYSTEM_PROMPT } from "../prompts/analysis.js";
 import { sendAnalysisReadyEmail } from "../utils/email.js";
+import { analyzeElectricalPhoto } from "../utils/voltAnalyzer.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
@@ -42,7 +41,6 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
       return res.status(400).json({ error: "At least one image is required" });
     }
 
-    const imageContent = [];
     const publicUrls = [];
 
     for (const file of req.files) {
@@ -62,58 +60,40 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
         .from("voltpal-uploads")
         .getPublicUrl(storagePath);
       publicUrls.push(urlData.publicUrl);
-
-      imageContent.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: file.mimetype || "image/jpeg",
-          data: file.buffer.toString("base64"),
-        },
-      });
     }
 
-    imageContent.push({
-      type: "text",
-      text: `Analyze this electrical equipment photo. Analysis type hint: ${analysis_type || "general"}. Return your analysis as the specified JSON object.`,
-    });
-
-    var aiResult = await callClaude({
-      feature: 'photo_diagnosis',
-      systemPrompt: ELECTRICAL_ANALYSIS_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: imageContent }],
-    });
-    var rawText = aiResult.content;
-    let result;
+    // CLAUDE API CALL: electrical photo analysis — see /server/utils/voltAnalyzer.js
+    let analysisResult;
     try {
-      const stripped = rawText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-      try {
-        result = JSON.parse(stripped);
-      } catch {
-        const start = stripped.indexOf("{");
-        if (start === -1) throw new Error("No JSON found");
-        let depth = 0;
-        let end = -1;
-        for (let i = start; i < stripped.length; i++) {
-          if (stripped[i] === "{") depth++;
-          else if (stripped[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
-        }
-        if (end === -1) throw new Error("Unbalanced JSON");
-        result = JSON.parse(stripped.slice(start, end + 1));
+      analysisResult = await analyzeElectricalPhoto({
+        imageBase64: req.files[0].buffer.toString("base64"),
+        imageMediaType: req.files[0].mimetype || "image/jpeg",
+        analysisType: analysis_type,
+        voltageClass: req.body.voltage_class,
+        equipmentType: req.body.equipment_type,
+        environment: req.body.environment,
+        userNotes: req.body.user_notes,
+        userId,
+      });
+    } catch (error) {
+      if (error.type === 'api_error' || error.type === 'parse_error' || error.type === 'validation_error') {
+        return res.status(error.status || 500).json({
+          error: error.userMessage || 'Analysis failed. Please try again.'
+        });
       }
-    } catch (parseErr) {
-      console.error("Parse error:", parseErr.message, rawText);
-      return res.status(500).json({ error: "Failed to parse analysis result", raw: rawText });
+      throw error;
     }
+
+    const { analysis: result } = analysisResult;
 
     const { data: saved, error: saveError } = await supabaseService
       .from("electrical_analyses")
       .insert({
         user_id: userId,
         image_urls: publicUrls,
-        analysis_type: result.analysis_type || analysis_type || "general",
-        diagnosis: result.overall_diagnosis || result.plain_english_summary,
-        recommended_action: result.recommended_action,
+        analysis_type: result.image_type || analysis_type || "general",
+        diagnosis: result.assessment_reasoning || result.overall_assessment,
+        recommended_action: result.corrective_actions?.[0]?.action || null,
         confidence: result.confidence,
         full_response_json: result,
         saved: false,
@@ -123,7 +103,7 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
 
     if (saveError) {
       console.error("Save error:", saveError);
-      return res.json({ result, saved: false, save_error: saveError.message, model: aiResult.model });
+      return res.json({ result, saved: false, save_error: saveError.message, model: analysisResult.model });
     }
 
     // Only send email for offline-queued analyses
@@ -132,11 +112,11 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
         to: req.user.email,
         appKey: "voltpal",
         displayName: req.profile.display_name,
-        analysisType: result.analysis_type || analysis_type || "general",
+        analysisType: result.image_type || analysis_type || "general",
       }).catch(() => {});
     }
 
-    return res.json({ result, record_id: saved.id, model: aiResult.model });
+    return res.json({ result, record_id: saved.id, model: analysisResult.model });
   } catch (err) {
     console.error("Electrical analysis error:", err);
     return res.status(500).json({ error: "Internal server error" });
