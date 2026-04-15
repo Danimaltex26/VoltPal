@@ -126,13 +126,15 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
       return res.json({ result, saved: false, save_error: saveError.message, model: aiResult.model });
     }
 
-    // Send email notification (fire-and-forget, don't block response)
-    sendAnalysisReadyEmail({
-      to: req.user.email,
-      appKey: "voltpal",
-      displayName: req.profile.display_name,
-      analysisType: result.analysis_type || analysis_type || "general",
-    }).catch(() => {});
+    // Only send email for offline-queued analyses
+    if (req.body.queued) {
+      sendAnalysisReadyEmail({
+        to: req.user.email,
+        appKey: "voltpal",
+        displayName: req.profile.display_name,
+        analysisType: result.analysis_type || analysis_type || "general",
+      }).catch(() => {});
+    }
 
     return res.json({ result, record_id: saved.id, model: aiResult.model });
   } catch (err) {
