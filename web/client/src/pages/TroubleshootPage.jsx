@@ -326,90 +326,212 @@ export default function TroubleshootPage() {
             {model && <div style={{ fontSize: '0.6875rem', color: '#6B6B73', marginTop: '0.25rem' }}>{model}</div>}
           </div>
 
-          {/* Summary */}
-          {result.plain_english_summary && (
-            <div className="card">
-              <p style={{ fontSize: '1.125rem', lineHeight: 1.6 }}>{result.plain_english_summary}</p>
+          {/* Safety callout — top priority when present */}
+          {(result.safety_callout || result.safety_warning) && (
+            <div className="warning-box">
+              <strong>Safety: </strong>{result.safety_callout || result.safety_warning}
             </div>
           )}
 
-          {/* Probable Causes */}
-          {result.probable_causes && result.probable_causes.length > 0 && (
+          {/* PPE & LOTO — always populated, highlighted prominently */}
+          {result.required_ppe_and_loto && (
+            <div className="card" style={{ borderLeft: '4px solid #FACC15' }}>
+              <h3 style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#FACC15' }}>⚡</span>
+                Required PPE & LOTO
+              </h3>
+              <p style={{ fontSize: '0.9375rem', lineHeight: 1.5 }}>{result.required_ppe_and_loto}</p>
+            </div>
+          )}
+
+          {/* Plain English Summary */}
+          {result.plain_english_summary && (
             <div className="card">
-              <h3 style={{ marginBottom: '0.75rem' }}>Probable Causes</h3>
-              <div className="stack-sm">
-                {result.probable_causes.map((c, i) => (
-                  <div key={i} style={{ paddingBottom: '0.75rem', borderBottom: '1px solid #2A2A2E' }}>
-                    <div className="row" style={{ gap: '0.5rem', marginBottom: '0.25rem' }}>
-                      <span style={{ fontWeight: 700, color: '#FACC15', minWidth: 24 }}>#{c.rank || i + 1}</span>
-                      <strong>{c.cause}</strong>
+              <p style={{ fontSize: '1.0625rem', lineHeight: 1.6 }}>{result.plain_english_summary}</p>
+            </div>
+          )}
+
+          {/* Fault code interpretation */}
+          {result.fault_code_interpretation && (
+            <div className="card">
+              <h3 style={{ marginBottom: '0.5rem' }}>Fault Code</h3>
+              <p className="text-secondary">{result.fault_code_interpretation}</p>
+            </div>
+          )}
+
+          {/* Probable Causes — each with its own fix_path, parts, measurements */}
+          {result.probable_causes && result.probable_causes.length > 0 && (
+            <div className="stack">
+              <h3>Probable Causes</h3>
+              {result.probable_causes.map((c, i) => {
+                const rank = c.rank ?? i + 1;
+                const fixSteps = c.fix_path || c.fix_steps || [];
+                const parts = c.parts_to_check || [];
+                const meas = c.measurement_expectations || {};
+                const hasMeas = meas && Object.values(meas).some(Boolean);
+                return (
+                  <div key={i} className="card">
+                    <div className="row" style={{ marginBottom: '0.5rem', gap: '0.5rem', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="row" style={{ gap: '0.5rem', alignItems: 'center' }}>
+                        <div style={{
+                          minWidth: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          background: '#FACC15',
+                          color: '#000',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.8125rem',
+                        }}>
+                          {rank}
+                        </div>
+                        <strong style={{ lineHeight: 1.3 }}>{c.cause}</strong>
+                      </div>
                       {c.likelihood && (
                         <span className={`badge ${c.likelihood === 'high' ? 'badge-red' : c.likelihood === 'medium' ? 'badge-amber' : 'badge-gray'}`}>
                           {c.likelihood}
                         </span>
                       )}
                     </div>
-                    {c.explanation && <p className="text-secondary" style={{ fontSize: '0.875rem', marginLeft: 32 }}>{c.explanation}</p>}
+
+                    {c.explanation && (
+                      <p className="text-secondary" style={{ fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+                        {c.explanation}
+                      </p>
+                    )}
+
+                    {c.code_note && (
+                      <p style={{ fontSize: '0.8125rem', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(250,204,21,0.1)', borderLeft: '3px solid #FACC15', borderRadius: 4 }}>
+                        <strong>NEC note: </strong>{c.code_note}
+                      </p>
+                    )}
+
+                    {hasMeas && (
+                      <div style={{ marginBottom: fixSteps.length > 0 || parts.length > 0 ? '0.75rem' : 0 }}>
+                        <p className="text-secondary" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.375rem' }}>
+                          Measurement Expectations
+                        </p>
+                        <div style={{ fontSize: '0.875rem' }}>
+                          {Object.entries(meas).map(([k, v]) => (
+                            v ? (
+                              <p key={k} style={{ marginBottom: '0.25rem' }}>
+                                <strong style={{ textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}:</strong> {v}
+                              </p>
+                            ) : null
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {parts.length > 0 && (
+                      <div style={{ marginBottom: fixSteps.length > 0 ? '0.75rem' : 0 }}>
+                        <p className="text-secondary" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.375rem' }}>
+                          Parts to Check
+                        </p>
+                        <div className="stack-sm">
+                          {parts.map((p, pi) => (
+                            <div key={pi} style={{ padding: '0.5rem 0.625rem', background: 'rgba(255,255,255,0.03)', borderRadius: 6 }}>
+                              <div className="row-between" style={{ marginBottom: '0.25rem', alignItems: 'flex-start' }}>
+                                <strong style={{ fontSize: '0.9375rem' }}>{p.part}</strong>
+                                {p.estimated_cost && <span className="text-secondary" style={{ fontSize: '0.8125rem', flexShrink: 0, marginLeft: '0.5rem' }}>{p.estimated_cost}</span>}
+                              </div>
+                              {p.symptom_if_failed && (
+                                <p className="text-secondary" style={{ fontSize: '0.8125rem' }}>
+                                  <em>If failed:</em> {p.symptom_if_failed}
+                                </p>
+                              )}
+                              {p.test_method && (
+                                <p className="text-secondary" style={{ fontSize: '0.8125rem', marginTop: '0.125rem' }}>
+                                  <em>Test:</em> {p.test_method}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {fixSteps.length > 0 && (
+                      <div style={{ paddingLeft: '0.5rem', borderLeft: '2px solid #2A2A2E' }}>
+                        <p className="text-secondary" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
+                          Fix Path
+                        </p>
+                        <div className="stack-sm">
+                          {fixSteps.map((step, si) => (
+                            <div key={si} className="row" style={{ gap: '0.5rem', alignItems: 'flex-start' }}>
+                              <span style={{ fontWeight: 600, color: '#FACC15', minWidth: 18, fontSize: '0.875rem' }}>
+                                {step.step ?? si + 1}.
+                              </span>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: '0.9375rem' }}>{step.action || step.instruction || step}</p>
+                                {step.tip && (
+                                  <p className="text-secondary" style={{ fontSize: '0.8125rem', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                                    Tip: {step.tip}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
 
-          {/* Step-by-Step Fix */}
-          {result.step_by_step_fix && result.step_by_step_fix.length > 0 && (
+          {/* Code disposition & NEC reference */}
+          {(result.code_disposition || result.nec_reference) && (
             <div className="card">
-              <h3 style={{ marginBottom: '0.75rem' }}>Step-by-Step Fix</h3>
-              <div className="stack-sm">
-                {result.step_by_step_fix.map((s, i) => (
-                  <div key={i} className="row" style={{ gap: '0.5rem', alignItems: 'flex-start' }}>
-                    <span style={{ fontWeight: 700, color: '#FACC15', minWidth: 24 }}>{s.step || i + 1}</span>
-                    <div>
-                      <p>{s.action}</p>
-                      {s.tip && <p className="text-secondary" style={{ fontSize: '0.8125rem', marginTop: '0.25rem' }}>Tip: {s.tip}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Parts to Check */}
-          {result.parts_to_check && result.parts_to_check.length > 0 && (
-            <div className="card">
-              <h3 style={{ marginBottom: '0.75rem' }}>Parts to Check</h3>
-              <div className="stack-sm">
-                {result.parts_to_check.map((p, i) => (
-                  <div key={i} className="row-between" style={{ padding: '0.5rem 0', borderBottom: '1px solid #2A2A2E' }}>
-                    <div>
-                      <strong>{p.part}</strong>
-                      {p.symptom_if_failed && <p className="text-secondary" style={{ fontSize: '0.8125rem' }}>{p.symptom_if_failed}</p>}
-                    </div>
-                    {p.estimated_cost && <span className="text-secondary" style={{ fontSize: '0.875rem' }}>{p.estimated_cost}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Safety Warning */}
-          {result.safety_warning && (
-            <div className="warning-box">
-              <strong>Safety Warning:</strong> {result.safety_warning}
+              {result.code_disposition && (
+                <p style={{ fontSize: '0.9375rem', marginBottom: result.nec_reference ? '0.5rem' : 0 }}>
+                  <span className="text-secondary">Code disposition: </span>
+                  {result.code_disposition}
+                </p>
+              )}
+              {result.nec_reference && (
+                <p style={{ fontSize: '0.9375rem' }}>
+                  <span className="text-secondary">NEC reference: </span>
+                  <strong>{result.nec_reference}</strong>
+                </p>
+              )}
             </div>
           )}
 
           {/* Escalation */}
           {result.escalate_if && (
             <div className="warning-box">
-              <strong>Escalate if:</strong> {result.escalate_if}
+              <strong>Escalate if: </strong>{result.escalate_if}
             </div>
           )}
 
           {/* Estimated Fix Time */}
           {result.estimated_fix_time && (
-            <div className="info-box">
-              <strong>Estimated Fix Time:</strong> {result.estimated_fix_time}
+            <div className="card">
+              <div className="row-between">
+                <span className="text-secondary">Estimated fix time</span>
+                <strong>{result.estimated_fix_time}</strong>
+              </div>
+            </div>
+          )}
+
+          {/* Confidence */}
+          {result.confidence && (
+            <div className="card">
+              <div className="row-between" style={{ alignItems: 'center' }}>
+                <span className="text-secondary">Confidence</span>
+                <span className={`badge ${result.confidence === 'high' ? 'badge-green' : result.confidence === 'medium' ? 'badge-amber' : 'badge-red'}`}>
+                  {result.confidence}
+                </span>
+              </div>
+              {result.confidence_reasoning && (
+                <p className="text-secondary" style={{ fontSize: '0.8125rem', marginTop: '0.5rem' }}>
+                  {result.confidence_reasoning}
+                </p>
+              )}
             </div>
           )}
 
