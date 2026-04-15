@@ -46,21 +46,56 @@ const SAFETY_KEYWORDS = [
   'fall', 'crush', 'entrap', 'interlock', 'governor',
 ];
 
+/**
+ * Determines complexity of a VoltPal troubleshoot request.
+ * Routes to complex_troubleshoot (Sonnet) when any signal indicates
+ * the problem requires advanced electrical code or equipment knowledge.
+ *
+ * Signals that escalate to Sonnet:
+ *   - Multi-turn conversation (follow-up)
+ *   - NEC edition selected (code citation accuracy)
+ *   - 480V+ voltage system (arc flash, industrial motor circuits)
+ *   - Fault code present (model-specific interpretation)
+ *   - Measured values provided (quantitative diagnosis)
+ *   - Industrial installation (MCC, motor circuits, PLCs)
+ *   - Wet or hazardous environment (location-specific NEC)
+ *   - Safety-critical symptom keywords
+ */
 function classifyTroubleshoot(params) {
-  var {
+  const {
     conversationHistory = [],
     symptom = '',
     requiresCodeCompliance = false,
-    isSpecialtyMaterial = false,
+    isHighVoltage = false,
+    hasFaultCode = false,
+    hasMeasurements = false,
+    isIndustrial = false,
+    isSpecialEnvironment = false,
   } = params;
 
-  var symptomLower = symptom.toLowerCase();
-  var isSafetyCritical = SAFETY_KEYWORDS.some(function (kw) {
-    return symptomLower.includes(kw);
-  });
-  var isMultiTurn = conversationHistory.length > 0;
-  var isComplex = isMultiTurn || requiresCodeCompliance ||
-                  isSpecialtyMaterial || isSafetyCritical;
+  const safetyCriticalKeywords = [
+    'arc flash', 'arc blast', 'electrocution', 'shock', 'fire',
+    'smoke', 'burning', 'explosion', 'backfeed', 'ground fault',
+    'fault current', 'medium voltage', 'high voltage', 'live',
+    'energized', 'flash', 'trip', 'overcurrent', 'short circuit',
+  ];
+
+  const isSafetyCritical = safetyCriticalKeywords.some(
+    kw => symptom.toLowerCase().includes(kw)
+  );
+
+  const isMultiTurn = conversationHistory.length > 0;
+
+  const isComplex = (
+    isMultiTurn          ||  // follow-up = context-dependent reasoning
+    requiresCodeCompliance || // NEC edition = citation accuracy
+    isHighVoltage        ||  // 480V+ = arc flash, industrial circuits
+    hasFaultCode         ||  // fault code = model-specific knowledge
+    hasMeasurements      ||  // measured values = quantitative diagnosis
+    isIndustrial         ||  // industrial = motor circuits, MCC, PLCs
+    isSpecialEnvironment ||  // wet/hazardous = location-specific NEC
+    isSafetyCritical         // safety keywords = no shortcuts
+  );
 
   return isComplex ? 'complex_troubleshoot' : 'simple_troubleshoot';
 }
