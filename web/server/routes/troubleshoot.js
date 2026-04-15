@@ -22,10 +22,12 @@ router.post("/", auth, async (req, res) => {
       symptom,
       environment,
       already_tried = [],
+      follow_up,
+      session_id,
     } = req.body;
 
-    // SUBSCRIPTION GATE
-    if (req.profile.subscription_tier === "free") {
+    // SUBSCRIPTION GATE — only counts NEW sessions; follow-ups are free
+    if (!session_id && req.profile.subscription_tier === "free") {
       const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
       const { count } = await supabaseService
         .from("troubleshoot_sessions")
@@ -40,20 +42,45 @@ router.post("/", auth, async (req, res) => {
       }
     }
 
-    if (!symptom || typeof symptom !== "string" || !symptom.trim()) {
+    // Load existing session for follow-up
+    let existingSession = null;
+    let existingHistory = [];
+    if (session_id) {
+      const { data, error: fetchError } = await supabaseService
+        .from("troubleshoot_sessions")
+        .select("*")
+        .eq("id", session_id)
+        .eq("user_id", userId)
+        .single();
+      if (fetchError || !data) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      existingSession = data;
+      existingHistory = data.conversation_json || [];
+    }
+
+    // Require symptom only for initial diagnose, not follow-ups
+    if (!session_id && (!symptom || typeof symptom !== "string" || !symptom.trim())) {
       return res.status(400).json({ error: "A symptom description is required" });
     }
 
-    const userMessage = buildTroubleshootMessage(req.body);
+    // Follow-ups send the raw question with a schema reminder so the
+    // model stays in structured-output mode. Initial requests build
+    // the full structured context message.
+    const userMessage = session_id && follow_up
+      ? `${follow_up}\n\nRespond with a JSON object exactly matching the schema in your instructions. No prose before or after, no markdown code fences.`
+      : buildTroubleshootMessage(req.body);
 
-    const messages = [{ role: "user", content: userMessage }];
+    const messages = existingHistory.length > 0
+      ? [...existingHistory, { role: "user", content: userMessage }]
+      : [{ role: "user", content: userMessage }];
 
     // CLAUDE API CALL: VoltPal troubleshoot diagnosis
     // Model routing: simple symptoms → Haiku, complex → Sonnet
     // Complexity signals passed via context — see utils/modelRouter.js
     const troubleshootContext = {
       // Prior conversation turns — multi-turn escalates to Sonnet
-      conversationHistory: req.body.conversationHistory || [],
+      conversationHistory: existingHistory,
 
       // Primary symptom for safety keyword detection
       symptom: req.body.symptom || req.body.fault_code || '',
@@ -115,32 +142,47 @@ router.post("/", auth, async (req, res) => {
       return res.status(500).json({ error: "Failed to parse troubleshoot result", raw: rawText });
     }
 
-    const conversationRecord = [
-      { role: "user", content: userMessage },
-      { role: "assistant", content: rawText },
-    ];
+    // Build updated conversation history including this turn
+    const updatedHistory = [...messages, { role: "assistant", content: rawText }];
 
-    const { data: saved, error: saveError } = await supabaseService
-      .from("troubleshoot_sessions")
-      .insert({
-        user_id: userId,
-        equipment_type,
-        equipment_brand,
-        voltage_system,
-        symptom,
-        environment,
-        conversation_json: conversationRecord,
-        resolved: false,
-      })
-      .select()
-      .single();
+    const sessionPayload = {
+      user_id: userId,
+      equipment_type: equipment_type || existingSession?.equipment_type,
+      equipment_brand: equipment_brand || existingSession?.equipment_brand,
+      voltage_system: voltage_system || existingSession?.voltage_system,
+      symptom: symptom || existingSession?.symptom,
+      environment: environment || existingSession?.environment,
+      conversation_json: updatedHistory,
+      resolved: existingSession?.resolved ?? false,
+    };
 
-    if (saveError) {
-      console.error("Save error:", saveError);
-      return res.json({ result, saved: false, model: aiResult.model });
+    let savedSession;
+    if (session_id && existingSession) {
+      const { data, error: updateError } = await supabaseService
+        .from("troubleshoot_sessions")
+        .update(sessionPayload)
+        .eq("id", session_id)
+        .select()
+        .single();
+      if (updateError) {
+        console.error("Session update error:", updateError);
+        return res.json({ result, session_id, saved: false, model: aiResult.model });
+      }
+      savedSession = data;
+    } else {
+      const { data, error: insertError } = await supabaseService
+        .from("troubleshoot_sessions")
+        .insert(sessionPayload)
+        .select()
+        .single();
+      if (insertError) {
+        console.error("Session insert error:", insertError);
+        return res.json({ result, saved: false, model: aiResult.model });
+      }
+      savedSession = data;
     }
 
-    return res.json({ result, session_id: saved.id, model: aiResult.model });
+    return res.json({ result, session_id: savedSession.id, model: aiResult.model });
   } catch (err) {
     console.error("Troubleshoot error:", err);
     return res.status(500).json({ error: "Internal server error" });

@@ -262,6 +262,10 @@ export default function TroubleshootPage() {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [model, setModel] = useState('');
+  const [sessionId, setSessionId] = useState(null);
+  const [followUp, setFollowUp] = useState('');
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUps, setFollowUps] = useState([]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -288,6 +292,8 @@ export default function TroubleshootPage() {
       const data = await apiPost('/troubleshoot', form);
       setResult(data.result || data);
       setModel(data.model || '');
+      setSessionId(data.session_id || null);
+      setFollowUps([]);
     } catch (err) {
       setError(err.message || 'Troubleshoot failed.');
     } finally {
@@ -295,10 +301,32 @@ export default function TroubleshootPage() {
     }
   };
 
+  const handleFollowUp = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    if (!followUp.trim() || !sessionId) return;
+    const question = followUp;
+    setFollowUpLoading(true);
+    setError('');
+    try {
+      const data = await apiPost('/troubleshoot', { session_id: sessionId, follow_up: question });
+      setResult(data.result || data);
+      setModel(data.model || '');
+      setFollowUps((prev) => [...prev, { question, at: Date.now() }]);
+      setFollowUp('');
+    } catch (err) {
+      setError(err.message || 'Follow-up failed.');
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
   function handleReset() {
     setResult(null);
     setModel('');
     setError('');
+    setSessionId(null);
+    setFollowUp('');
+    setFollowUps([]);
     setForm({
       equipment_type: '',
       equipment_brand: '',
@@ -533,6 +561,41 @@ export default function TroubleshootPage() {
                 </p>
               )}
             </div>
+          )}
+
+          {/* Follow-up question history */}
+          {followUps.length > 0 && (
+            <div className="stack-sm">
+              {followUps.map((fu, i) => (
+                <div key={i} className="card" style={{ background: 'rgba(250,204,21,0.06)' }}>
+                  <p className="text-secondary" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.25rem' }}>
+                    Follow-up #{i + 1}
+                  </p>
+                  <p style={{ fontSize: '0.9375rem' }}>{fu.question}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Ask a follow-up */}
+          {sessionId && (
+            <form onSubmit={handleFollowUp} className="stack-sm">
+              <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>Ask a follow-up</label>
+              <textarea
+                className="textarea"
+                value={followUp}
+                onChange={(e) => setFollowUp(e.target.value)}
+                placeholder="e.g. I checked the coil and it reads normal — what else?"
+                rows={2}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary btn-block"
+                disabled={followUpLoading || !followUp.trim()}
+              >
+                {followUpLoading ? 'Asking...' : 'Ask'}
+              </button>
+            </form>
           )}
 
           <button className="btn btn-secondary btn-block" onClick={handleReset}>
