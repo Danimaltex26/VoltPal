@@ -8,6 +8,7 @@ import referenceRoutes from "./routes/reference.js";
 import historyRoutes from "./routes/history.js";
 import profileRoutes from "./routes/profile.js";
 import trainingRoutes from "./routes/training.js";
+import webhookRoutes from "./routes/webhooks.js";
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use("/api/reference", referenceRoutes);
 app.use("/api/history", historyRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/training", trainingRoutes);
+app.use("/api/webhooks", webhookRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "voltpal", timestamp: new Date().toISOString() });

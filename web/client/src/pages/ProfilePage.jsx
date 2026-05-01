@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiGet, apiPatch } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import Paywall from '../components/Paywall';
 
 const SPECIALTIES = ['Industrial', 'Commercial', 'Residential', 'Controls/PLC', 'Motor/VFD', 'High Voltage', 'Fire Alarm', 'Solar/PV'];
 const CERTIFICATIONS = ['Journeyman', 'Master Electrician', 'Apprentice', 'NFPA 70E', 'OSHA 10', 'OSHA 30', 'NEC Code Specialist', 'Other'];
@@ -173,20 +174,31 @@ export default function ProfilePage() {
       </div>
 
       {/* Upgrade to Pro */}
-      {isFree && (
-        <div className="card" style={{ textAlign: 'center', padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '0.5rem' }}>Upgrade to Pro</h3>
-          <p className="text-secondary" style={{ fontSize: '0.8125rem', marginBottom: '1rem' }}>
-            Unlimited photo analyses, troubleshoot sessions, AI reference lookups, full training content, and priority processing.
-          </p>
-          <a
-            href="https://tradepals.net/#pricing"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-primary btn-block"
+      {isFree && <Paywall />}
+
+      {/* Subscription management for Pro users */}
+      {!isFree && (
+        <div className="card">
+          <div className="row-between" style={{ alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0 }}>Subscription</h3>
+              <p className="text-secondary" style={{ fontSize: '0.875rem' }}>
+                Unlimited analyses, troubleshooting, training, and reference lookups.
+              </p>
+            </div>
+            <span className="badge badge-green">Pro</span>
+          </div>
+          <button
+            className="btn btn-secondary btn-block"
+            style={{ marginTop: '0.75rem' }}
+            onClick={async () => {
+              const { getManagementURL } = await import('../utils/revenuecat');
+              const url = await getManagementURL();
+              if (url) window.open(url, '_blank');
+            }}
           >
-            View Pro Plans
-          </a>
+            Manage Subscription
+          </button>
         </div>
       )}
 
