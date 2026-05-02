@@ -48,8 +48,29 @@ export default async function auth(req, res, next) {
       req.profile = profile;
     }
 
-    // STUB: hardcoded pro for dev — remove when billing is wired up
-    req.profile.subscription_tier = "pro";
+    // Read actual subscription tier from public.subscriptions
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("tier")
+      .eq("user_id", user.id)
+      .eq("app", "voltpal")
+      .maybeSingle();
+
+    req.profile.subscription_tier = sub?.tier || "free";
+
+    // Team-tier override: if user is on an active team, grant Pro
+    if (req.profile.team_id && req.profile.subscription_tier === "free") {
+      const { data: team } = await supabase
+        .from("teams")
+        .select("subscription_status")
+        .eq("id", req.profile.team_id)
+        .maybeSingle();
+
+      if (team?.subscription_status === "active") {
+        req.profile.subscription_tier = "pro";
+        req.profile.team_subscription = true;
+      }
+    }
 
     next();
   } catch (err) {
