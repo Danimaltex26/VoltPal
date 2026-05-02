@@ -78,7 +78,7 @@ export default function ProfilePage() {
 
   const p = profile || {};
   const usage = p.usage || {};
-  const isFree = !p.subscription || p.subscription === 'free';
+  const isFree = !p.subscription_tier || p.subscription_tier === 'free';
 
   return (
     <div className="page stack">
@@ -108,7 +108,7 @@ export default function ProfilePage() {
         </div>
         <p className="text-secondary" style={{ margin: '4px 0 0' }}>{user?.email || p.email}</p>
         <div style={{ marginTop: 8 }}>
-          <span className={`badge ${subBadge(p.subscription)}`}>{(p.subscription || 'Free').toUpperCase()}</span>
+          <span className={`badge ${subBadge(p.subscription_tier)}`}>{(p.subscription_tier || 'Free').toUpperCase()}</span>
         </div>
       </div>
 
