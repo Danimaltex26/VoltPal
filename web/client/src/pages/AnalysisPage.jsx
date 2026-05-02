@@ -639,7 +639,6 @@ export default function AnalysisPage() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             multiple
             onChange={handleUpload}
             style={{ display: 'none' }}
