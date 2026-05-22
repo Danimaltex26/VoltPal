@@ -18,6 +18,7 @@ import ExamEngine from './pages/training/ExamEngine';
 import ExamScoreReport from './pages/training/ExamScoreReport';
 import ReadinessDashboard from './pages/training/ReadinessDashboard';
 import SpacedRepetitionQueue from './pages/training/SpacedRepetitionQueue';
+import PublicQuiz from './pages/PublicQuiz';
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/journeyman-practice" element={<PublicQuiz />} />
         <Route
           path="/"
           element={
