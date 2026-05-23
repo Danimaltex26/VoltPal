@@ -81,25 +81,99 @@ const QUIZ_CONFIG = {
   },
 };
 
-function buildQuizResultsEmail({ source, score, total, results }) {
-  const cfg = QUIZ_CONFIG[source] || QUIZ_CONFIG.voltpal_journeyman;
+// Spanish language strings for the quiz results email.
+// All copy is Claude-drafted Mexican Spanish — review with a native speaker before
+// wide distribution. Cert names (Journeyman) stay in English per VoltPal Spanish brief.
+// TODO[native-speaker review]: confirm tone (semi-formal "tú" used here) + dialect.
+const QUIZ_CONFIG_ES = {
+  voltpal_journeyman: {
+    appKey: "voltpal",
+    certName: "Journeyman",
+    passPercent: 70,
+    signupPath: "/signup?utm_source=journeyman_quiz&utm_medium=email&utm_campaign=public_quiz&utm_content=es",
+    quizUrl: "https://voltpal.tradepals.net/es/journeyman-practice",
+    subject: (score, total) => `Tu resultado del examen de práctica Journeyman — ${score}/${total}`,
+    scoreLabel: "Tu puntaje",
+    passedAbove: (pct, mark) => `${pct}% — Arriba del puntaje mínimo Journeyman (${mark}%)`,
+    passedBelow: (pct, mark) => `${pct}% — Abajo del puntaje mínimo Journeyman (${mark}%)`,
+    ctaHeadline: "Obtén el banco completo Journeyman + tutor AI",
+    ctaBody: "VoltPal te explica cada respuesta incorrecta, identifica tus áreas débiles y corre simulacros completos cronometrados. Prueba gratis, cancela cuando quieras.",
+    ctaPrimary: "Prueba VoltPal Pro Gratis →",
+    ctaFooter: "Comienza tu prueba gratuita →",
+    reviewHeadline: "Revisión pregunta por pregunta",
+    verdictCorrect: "Correcto",
+    verdictIncorrect: "Incorrecto",
+    verdictSkipped: "Sin contestar",
+    yourAnswer: "Tu respuesta",
+    correctAnswer: "Respuesta correcta",
+    refLabel: "Ref:",
+    footerLine: (appUrl) => `Tomaste el examen gratis de práctica Journeyman en ${appUrl}/es/journeyman-practice.`,
+    footerCompany: "VoltPal es un producto de TradePals, LLC",
+  },
+};
+
+function buildQuizResultsEmail({ source, score, total, results, lang }) {
+  const isEs = lang === "es";
+  const baseSource = source.replace(/_es$/, ""); // voltpal_journeyman_es → voltpal_journeyman
+  const cfg = isEs
+    ? (QUIZ_CONFIG_ES[baseSource] || QUIZ_CONFIG_ES.voltpal_journeyman)
+    : (QUIZ_CONFIG[baseSource] || QUIZ_CONFIG.voltpal_journeyman);
   const app = APP_CONFIG[cfg.appKey] || APP_CONFIG.voltpal;
   const logoUrl = `https://tradepals.net/${cfg.appKey}-logo.png`;
   const percent = Math.round((score / total) * 100);
   const passed = percent >= cfg.passPercent;
   const scoreColor = passed ? app.color : "#F59E0B";
   const signupUrl = `${app.url}${cfg.signupPath}`;
-  // VoltPal accent is yellow — yellow buttons need dark text for legibility
+  // VoltPal accent is yellow — yellow buttons need dark text for legibility (WCAG)
   const btnTextColor = cfg.appKey === "voltpal" ? "#0f0f10" : "#ffffff";
+
+  // Localized labels — Spanish or English
+  const L = isEs ? {
+    scoreLabel: cfg.scoreLabel,
+    passed: passed ? cfg.passedAbove(percent, cfg.passPercent) : cfg.passedBelow(percent, cfg.passPercent),
+    ctaHeadline: cfg.ctaHeadline,
+    ctaBody: cfg.ctaBody,
+    ctaPrimary: cfg.ctaPrimary,
+    ctaFooter: cfg.ctaFooter,
+    reviewHeadline: cfg.reviewHeadline,
+    verdictCorrect: cfg.verdictCorrect,
+    verdictIncorrect: cfg.verdictIncorrect,
+    verdictSkipped: cfg.verdictSkipped,
+    yourAnswer: cfg.yourAnswer,
+    correctAnswer: cfg.correctAnswer,
+    refLabel: cfg.refLabel,
+    footerLine: cfg.footerLine(app.url),
+    footerCompany: cfg.footerCompany,
+    htmlLang: "es",
+  } : {
+    scoreLabel: "Your Score",
+    passed: passed
+      ? `${percent}% — Above ${cfg.certName} pass mark (${cfg.passPercent}%)`
+      : `${percent}% — Below ${cfg.certName} pass mark (${cfg.passPercent}%)`,
+    ctaHeadline: `Get the full ${cfg.certName} bank + AI tutor`,
+    ctaBody: `${app.name} walks you through every wrong answer, tracks your weak domains, and runs full timed mock exams. Free trial, cancel anytime.`,
+    ctaPrimary: `Try ${app.name} Pro Free →`,
+    ctaFooter: "Start Your Free Trial →",
+    reviewHeadline: "Question-by-question review",
+    verdictCorrect: "Correct",
+    verdictIncorrect: "Incorrect",
+    verdictSkipped: "Skipped",
+    yourAnswer: "Your answer",
+    correctAnswer: "Correct",
+    refLabel: "Ref:",
+    footerLine: `You took the free ${cfg.certName} practice quiz at ${app.url}/journeyman-practice.`,
+    footerCompany: `${app.name} is a TradePals, LLC product`,
+    htmlLang: "en",
+  };
 
   const reviewRows = (results || [])
     .map((r) => {
       const userText = r.userChoice
         ? (r.options.find((o) => o.key === r.userChoice)?.text || "")
-        : "(skipped)";
+        : (isEs ? "(sin contestar)" : "(skipped)");
       const correctText = r.options.find((o) => o.key === r.correctAnswer)?.text || "";
       const stripColor = r.isCorrect ? app.color : "#EF4444";
-      const verdict = r.isCorrect ? "Correct" : (r.userChoice ? "Incorrect" : "Skipped");
+      const verdict = r.isCorrect ? L.verdictCorrect : (r.userChoice ? L.verdictIncorrect : L.verdictSkipped);
       return `
         <tr>
           <td style="padding:16px 0;border-bottom:1px solid #2a2a2e;">
@@ -110,10 +184,10 @@ function buildQuizResultsEmail({ source, score, total, results }) {
                     Q${r.index + 1}${r.topic ? ` · ${r.topic}` : ""} · <span style="color:${stripColor};font-weight:600;">${verdict}</span>
                   </p>
                   <p style="margin:0 0 10px;font-size:14px;line-height:1.5;color:#e5e5e7;">${r.questionText}</p>
-                  ${!r.isCorrect && r.userChoice ? `<p style="margin:0 0 4px;font-size:13px;color:#a0a0a8;">Your answer: <strong style="color:#EF4444;">${r.userChoice}</strong> — ${userText}</p>` : ""}
-                  <p style="margin:0 0 10px;font-size:13px;color:#a0a0a8;">Correct: <strong style="color:${app.color};">${r.correctAnswer}</strong> — ${correctText}</p>
+                  ${!r.isCorrect && r.userChoice ? `<p style="margin:0 0 4px;font-size:13px;color:#a0a0a8;">${L.yourAnswer}: <strong style="color:#EF4444;">${r.userChoice}</strong> — ${userText}</p>` : ""}
+                  <p style="margin:0 0 10px;font-size:13px;color:#a0a0a8;">${L.correctAnswer}: <strong style="color:${app.color};">${r.correctAnswer}</strong> — ${correctText}</p>
                   ${r.explanation ? `<div style="background:rgba(250,204,21,0.06);border-radius:6px;padding:10px 12px;font-size:13px;line-height:1.55;color:#d4d4d8;">${r.explanation}</div>` : ""}
-                  ${r.standardReference ? `<p style="margin:6px 0 0;font-size:12px;color:#6b6b73;">Ref: ${r.standardReference}</p>` : ""}
+                  ${r.standardReference ? `<p style="margin:6px 0 0;font-size:12px;color:#6b6b73;">${L.refLabel} ${r.standardReference}</p>` : ""}
                 </td>
               </tr>
             </table>
@@ -123,11 +197,11 @@ function buildQuizResultsEmail({ source, score, total, results }) {
     .join("");
 
   return `<!DOCTYPE html>
-<html>
+<html lang="${L.htmlLang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Your ${cfg.certName} practice quiz results</title>
+  <title>${isEs ? `Resultado del examen ${cfg.certName}` : `Your ${cfg.certName} practice quiz results`}</title>
 </head>
 <body style="margin:0;padding:0;background:#0f0f10;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e5e5e7;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f0f10;padding:32px 16px;">
@@ -141,10 +215,10 @@ function buildQuizResultsEmail({ source, score, total, results }) {
           </tr>
           <tr>
             <td align="center" style="padding:8px 32px 0;">
-              <p style="margin:0 0 4px;font-size:12px;color:#6b6b73;text-transform:uppercase;letter-spacing:0.5px;">Your Score</p>
+              <p style="margin:0 0 4px;font-size:12px;color:#6b6b73;text-transform:uppercase;letter-spacing:0.5px;">${L.scoreLabel}</p>
               <p style="margin:0;font-size:48px;font-weight:700;color:${scoreColor};line-height:1;">${score}/${total}</p>
               <p style="margin:6px 0 0;font-size:15px;color:#d4d4d8;">
-                ${percent}% — ${passed ? `Above ${cfg.certName} pass mark (${cfg.passPercent}%)` : `Below ${cfg.certName} pass mark (${cfg.passPercent}%)`}
+                ${L.passed}
               </p>
             </td>
           </tr>
@@ -153,11 +227,9 @@ function buildQuizResultsEmail({ source, score, total, results }) {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:linear-gradient(135deg,rgba(250,204,21,0.14),rgba(250,204,21,0.04));border:1px solid rgba(250,204,21,0.3);border-radius:10px;">
                 <tr>
                   <td style="padding:20px 24px;">
-                    <h2 style="margin:0 0 8px;font-size:17px;color:#ffffff;">Get the full ${cfg.certName} bank + AI tutor</h2>
-                    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#d4d4d8;">
-                      ${app.name} walks you through every wrong answer, tracks your weak domains, and runs full timed mock exams. Free trial, cancel anytime.
-                    </p>
-                    <a href="${signupUrl}" style="display:inline-block;background:${app.color};color:${btnTextColor};font-weight:700;font-size:15px;text-decoration:none;padding:12px 24px;border-radius:8px;">Try ${app.name} Pro Free →</a>
+                    <h2 style="margin:0 0 8px;font-size:17px;color:#ffffff;">${L.ctaHeadline}</h2>
+                    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#d4d4d8;">${L.ctaBody}</p>
+                    <a href="${signupUrl}" style="display:inline-block;background:${app.color};color:${btnTextColor};font-weight:700;font-size:15px;text-decoration:none;padding:12px 24px;border-radius:8px;">${L.ctaPrimary}</a>
                   </td>
                 </tr>
               </table>
@@ -165,7 +237,7 @@ function buildQuizResultsEmail({ source, score, total, results }) {
           </tr>
           <tr>
             <td style="padding:8px 32px;">
-              <h3 style="margin:16px 0 0;font-size:15px;color:#ffffff;">Question-by-question review</h3>
+              <h3 style="margin:16px 0 0;font-size:15px;color:#ffffff;">${L.reviewHeadline}</h3>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 ${reviewRows}
               </table>
@@ -173,14 +245,14 @@ function buildQuizResultsEmail({ source, score, total, results }) {
           </tr>
           <tr>
             <td align="center" style="padding:8px 32px 24px;">
-              <a href="${signupUrl}" style="display:inline-block;background:${app.color};color:${btnTextColor};font-weight:700;font-size:15px;text-decoration:none;padding:14px 32px;border-radius:8px;">Start Your Free Trial →</a>
+              <a href="${signupUrl}" style="display:inline-block;background:${app.color};color:${btnTextColor};font-weight:700;font-size:15px;text-decoration:none;padding:14px 32px;border-radius:8px;">${L.ctaFooter}</a>
             </td>
           </tr>
           <tr>
             <td style="padding:16px 32px 24px;border-top:1px solid #2a2a2e;">
               <p style="margin:0;font-size:12px;color:#6b6b73;text-align:center;line-height:1.6;">
-                You took the free ${cfg.certName} practice quiz at ${app.url}/journeyman-practice.<br>
-                ${app.name} is a TradePals, LLC product · <a href="https://tradepals.net" style="color:#6b6b73;text-decoration:underline;">tradepals.net</a>
+                ${L.footerLine}<br>
+                ${L.footerCompany} · <a href="https://tradepals.net" style="color:#6b6b73;text-decoration:underline;">tradepals.net</a>
               </p>
             </td>
           </tr>
@@ -192,15 +264,21 @@ function buildQuizResultsEmail({ source, score, total, results }) {
 </html>`;
 }
 
-export async function sendQuizResultsEmail({ to, source, score, total, results }) {
+export async function sendQuizResultsEmail({ to, source, score, total, results, lang }) {
   if (!RESEND_API_KEY) {
     console.warn("RESEND_API_KEY not set — skipping quiz results email");
     return;
   }
 
-  const cfg = QUIZ_CONFIG[source] || QUIZ_CONFIG.voltpal_journeyman;
-  const app = APP_CONFIG[cfg.appKey] || APP_CONFIG.voltpal;
-  const html = buildQuizResultsEmail({ source, score, total, results });
+  const isEs = lang === "es";
+  const baseSource = source.replace(/_es$/, "");
+  const cfg = isEs
+    ? (QUIZ_CONFIG_ES[baseSource] || QUIZ_CONFIG_ES.voltpal_journeyman)
+    : (QUIZ_CONFIG[baseSource] || QUIZ_CONFIG.voltpal_journeyman);
+  const html = buildQuizResultsEmail({ source, score, total, results, lang });
+  const subject = isEs
+    ? cfg.subject(score, total)
+    : `Your ${cfg.certName} practice quiz results — ${score}/${total}`;
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -212,7 +290,7 @@ export async function sendQuizResultsEmail({ to, source, score, total, results }
       body: JSON.stringify({
         from: `${FROM_NAME} <${FROM_EMAIL}>`,
         to: [to],
-        subject: `Your ${cfg.certName} practice quiz results — ${score}/${total}`,
+        subject,
         html,
       }),
     });

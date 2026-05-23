@@ -66,35 +66,109 @@ function shuffle(arr) {
   return a;
 }
 
-async function loadJourneymanQuestions() {
-  // 1. Try curated showcase IDs first.
-  if (PUBLIC_JOURNEYMAN_SHOWCASE_IDS.length > 0) {
-    const { data, error } = await supabaseVolt
-      .from("training_questions")
-      .select("id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference")
-      .in("id", PUBLIC_JOURNEYMAN_SHOWCASE_IDS);
-    if (!error && data && data.length > 0) return data;
+// Apply Spanish content_es overlay to a question row if available.
+// Returns the question with question_text / option_a..d / explanation overridden
+// from the content_es JSONB column. Falls back to English where Spanish is absent
+// (per-field — so a partial translation still surfaces what it has).
+function applyEsOverlay(q) {
+  const es = q.content_es;
+  if (!es || typeof es !== "object") return q;
+  return {
+    ...q,
+    question_text: es.question_text || q.question_text,
+    option_a: es.option_a || q.option_a,
+    option_b: es.option_b || q.option_b,
+    option_c: es.option_c || q.option_c,
+    option_d: es.option_d || q.option_d,
+    explanation: es.explanation || q.explanation,
+  };
+}
+
+// Pick the column list to select; include content_es only when content_es column exists
+// (migration 050 applied). Falls back gracefully if the column doesn't exist yet.
+const ENGLISH_COLS = "id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference";
+const WITH_ES_COLS = ENGLISH_COLS + ", content_es";
+
+async function loadJourneymanQuestions(lang) {
+  const wantEs = lang === "es";
+  // When serving Spanish, try with content_es column; if migration 050 isn't applied
+  // yet, retry with English-only columns. esColumnAvailable tracks the outcome so
+  // subsequent fallback queries don't repeat the same failed select.
+  let cols = wantEs ? WITH_ES_COLS : ENGLISH_COLS;
+  let esColumnAvailable = wantEs;
+
+  function isColumnMissingError(err) {
+    return err && /content_es/.test(err.message || "");
   }
 
-  // 2. Random sample of JOURNEYMAN-level questions.
-  const { data: jm } = await supabaseVolt
+  // 1. For Spanish requests, prefer rows that have a Spanish translation seeded.
+  if (wantEs) {
+    const r = await supabaseVolt
+      .from("training_questions")
+      .select(cols)
+      .eq("cert_level", "JOURNEYMAN")
+      .eq("flagged_quality", false)
+      .not("content_es", "is", null)
+      .limit(QUESTION_COUNT);
+    if (!r.error && r.data && r.data.length >= QUESTION_COUNT) {
+      return { questions: r.data, translationStatus: "es" };
+    }
+    if (isColumnMissingError(r.error)) {
+      console.warn("[public-quiz] content_es column missing (migration 050 not applied) — falling back to English.");
+      esColumnAvailable = false;
+      cols = ENGLISH_COLS;
+    }
+    // Fall through to English with a warning header
+  }
+
+  // 2. Try curated showcase IDs.
+  if (PUBLIC_JOURNEYMAN_SHOWCASE_IDS.length > 0) {
+    const r = await supabaseVolt
+      .from("training_questions")
+      .select(cols)
+      .in("id", PUBLIC_JOURNEYMAN_SHOWCASE_IDS);
+    if (!r.error && r.data && r.data.length > 0) {
+      return { questions: r.data, translationStatus: wantEs ? "fallback-en" : "en" };
+    }
+  }
+
+  // 3. Random sample of JOURNEYMAN-level questions.
+  const jmR = await supabaseVolt
     .from("training_questions")
-    .select("id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference")
+    .select(cols)
     .eq("cert_level", "JOURNEYMAN")
     .eq("flagged_quality", false)
     .limit(50);
-  if (jm && jm.length >= QUESTION_COUNT) return shuffle(jm).slice(0, QUESTION_COUNT);
+  if (!jmR.error && jmR.data && jmR.data.length >= QUESTION_COUNT) {
+    return { questions: shuffle(jmR.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
+  }
+  if (isColumnMissingError(jmR.error) && esColumnAvailable) {
+    // Retry English-only one more time (in case showcase path didn't trip it)
+    esColumnAvailable = false;
+    cols = ENGLISH_COLS;
+    const jmRetry = await supabaseVolt
+      .from("training_questions")
+      .select(cols)
+      .eq("cert_level", "JOURNEYMAN")
+      .eq("flagged_quality", false)
+      .limit(50);
+    if (!jmRetry.error && jmRetry.data && jmRetry.data.length >= QUESTION_COUNT) {
+      return { questions: shuffle(jmRetry.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
+    }
+  }
 
-  // 3. Fall back to APPRENTICE — better than returning empty for first-launch.
-  const { data: app } = await supabaseVolt
+  // 4. Fall back to APPRENTICE.
+  const appR = await supabaseVolt
     .from("training_questions")
-    .select("id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference")
+    .select(cols)
     .eq("cert_level", "APPRENTICE")
     .eq("flagged_quality", false)
     .limit(50);
-  if (app && app.length >= QUESTION_COUNT) return shuffle(app).slice(0, QUESTION_COUNT);
+  if (!appR.error && appR.data && appR.data.length >= QUESTION_COUNT) {
+    return { questions: shuffle(appR.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
+  }
 
-  return [];
+  return { questions: [], translationStatus: "none" };
 }
 
 function toClientQuestion(q, index) {
@@ -112,29 +186,43 @@ function toClientQuestion(q, index) {
   };
 }
 
-// GET /api/public-quiz/journeyman
+// GET /api/public-quiz/journeyman?lang=en|es
 // Returns 10 questions without correct answers. Issues a session token used by submit.
-router.get("/journeyman", async (_req, res) => {
+// When ?lang=es, prefers questions with a Spanish content_es payload (after migration 050 + 051);
+// falls back to English with X-Translation-Status: fallback-en header if no Spanish content found.
+router.get("/journeyman", async (req, res) => {
   try {
-    const raw = await loadJourneymanQuestions();
+    const lang = req.query.lang === "es" ? "es" : "en";
+    const { questions: raw, translationStatus } = await loadJourneymanQuestions(lang);
     if (raw.length === 0) {
       return res.status(503).json({ error: "Quiz unavailable", message: "No questions seeded for this environment." });
     }
 
     const picked = raw.slice(0, QUESTION_COUNT);
+    // Apply Spanish overlay when serving Spanish content
+    const localized = translationStatus === "es" ? picked.map(applyEsOverlay) : picked;
+
     const sessionToken = signToken({
-      source: "voltpal_journeyman",
+      source: lang === "es" ? "voltpal_journeyman_es" : "voltpal_journeyman",
       ids: picked.map((q) => q.id),
+      lang,
       issued: Date.now(),
     });
 
+    // Surface translation status as a response header so the client can show a notice if it falls back
+    res.set("X-Translation-Status", translationStatus);
+
     res.json({
-      source: "voltpal_journeyman",
-      title: "Free Journeyman Electrician Practice Quiz",
-      certName: "Journeyman Electrician",
+      source: lang === "es" ? "voltpal_journeyman_es" : "voltpal_journeyman",
+      title: lang === "es"
+        ? "Examen Gratis de Práctica Journeyman"
+        : "Free Journeyman Electrician Practice Quiz",
+      certName: lang === "es" ? "Journeyman" : "Journeyman Electrician",
+      lang,
+      translationStatus,
       totalQuestions: picked.length,
       gateAfter: 3,
-      questions: picked.map(toClientQuestion),
+      questions: localized.map(toClientQuestion),
       sessionToken,
     });
   } catch (err) {
@@ -198,13 +286,22 @@ router.post("/submit", async (req, res) => {
     const session = verifyToken(sessionToken);
     if (!session) return res.status(400).json({ error: "Invalid session token" });
 
-    const { data: qs, error } = await supabaseVolt
-      .from("training_questions")
-      .select("id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference")
-      .in("id", session.ids);
-    if (error) throw error;
+    const lang = session.lang === "es" ? "es" : "en";
+    // Pull the same columns (including content_es when serving Spanish), and apply the overlay
+    const cols = lang === "es"
+      ? "id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference, content_es"
+      : "id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference";
+    let qResp = await supabaseVolt.from("training_questions").select(cols).in("id", session.ids);
+    if (qResp.error && lang === "es" && /content_es/.test(qResp.error.message)) {
+      // Column missing (migration 050 not applied) — retry without content_es
+      qResp = await supabaseVolt
+        .from("training_questions")
+        .select("id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference")
+        .in("id", session.ids);
+    }
+    if (qResp.error) throw qResp.error;
 
-    const byId = Object.fromEntries((qs || []).map((q) => [q.id, q]));
+    const byId = Object.fromEntries((qResp.data || []).map((q) => [q.id, lang === "es" ? applyEsOverlay(q) : q]));
 
     let correct = 0;
     const results = session.ids.map((qid, i) => {
@@ -251,6 +348,7 @@ router.post("/submit", async (req, res) => {
         score: correct,
         total: session.ids.length,
         results,
+        lang,
       }).catch((err) => console.error("sendQuizResultsEmail failed:", err));
     }
 

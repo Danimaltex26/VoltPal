@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
+import { strings } from '../i18n/voltpal';
 
 const API_ROOT = import.meta.env.VITE_API_URL || '';
 const VOLTPAL_YELLOW = '#FACC15';
-const ON_YELLOW_TEXT = '#0f0f10'; // dark text on yellow for legibility
+const ON_YELLOW_TEXT = '#0f0f10'; // dark text on yellow for legibility (WCAG)
 const GATE_AFTER = 3; // soft email gate after Q3
 
 // Analytics — best-effort, never throws if pixel/dataLayer absent.
@@ -46,35 +47,35 @@ function ProgressBar({ current, total }) {
   );
 }
 
-function Hero({ onStart, certName }) {
+function Hero({ onStart, certName, t }) {
   return (
     <div style={{ textAlign: 'center', padding: '2.5rem 0 2rem' }}>
       <h1 style={{ fontSize: 'clamp(1.75rem, 5vw, 2.5rem)', margin: '0 0 0.75rem', lineHeight: 1.15 }}>
-        Free Journeyman Practice Quiz
+        {t.heroTitle}
       </h1>
       <p style={{ color: '#A0A0A8', fontSize: '1.0625rem', margin: '0 0 1.75rem', maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
-        10 questions. 5 minutes. See where you stand for the {certName} electrician exam — with explanations for every answer.
+        {t.heroSubtitle({ certName })}
       </p>
       <button
         className="btn btn-primary"
         style={{ minWidth: 220, fontSize: '1.0625rem', padding: '0.875rem 2rem', background: VOLTPAL_YELLOW, color: ON_YELLOW_TEXT, border: 'none' }}
         onClick={onStart}
       >
-        Start Quiz →
+        {t.heroStart}
       </button>
       <p style={{ color: '#6B6B73', fontSize: '0.875rem', marginTop: '2rem' }}>
-        Built by VoltPal — the AI field companion for electricians.
+        {t.heroFooter}
       </p>
     </div>
   );
 }
 
-function QuestionCard({ q, index, total, selected, onSelect, onNext, onPrev, canGoBack, isLast }) {
+function QuestionCard({ q, index, total, selected, onSelect, onNext, onPrev, canGoBack, isLast, t }) {
   return (
     <div>
       <ProgressBar current={index + 1} total={total} />
       <div className="row-between" style={{ marginBottom: '0.5rem' }}>
-        <span className="text-muted" style={{ fontSize: '0.875rem' }}>Question {index + 1} of {total}</span>
+        <span className="text-muted" style={{ fontSize: '0.875rem' }}>{t.questionLabel({ current: index + 1, total })}</span>
         {q.topic && <span className="text-muted" style={{ fontSize: '0.8125rem' }}>{q.topic}</span>}
       </div>
       <div className="card">
@@ -103,27 +104,27 @@ function QuestionCard({ q, index, total, selected, onSelect, onNext, onPrev, can
         </div>
       </div>
       <div className="row-between" style={{ marginTop: '1rem' }}>
-        <button className="btn btn-ghost" onClick={onPrev} disabled={!canGoBack}>← Previous</button>
+        <button className="btn btn-ghost" onClick={onPrev} disabled={!canGoBack}>{t.previous}</button>
         <button
           className="btn btn-primary"
           onClick={onNext}
           disabled={selected == null}
           style={{ background: VOLTPAL_YELLOW, color: ON_YELLOW_TEXT, border: 'none' }}
         >
-          {isLast ? 'See Results →' : 'Next →'}
+          {isLast ? t.seeResults : t.next}
         </button>
       </div>
     </div>
   );
 }
 
-function EmailGate({ onSubmit, onSkip, submitting, error }) {
+function EmailGate({ onSubmit, onSkip, submitting, error, t }) {
   const [email, setEmail] = useState('');
   return (
     <div className="card" style={{ maxWidth: 480, margin: '2rem auto', textAlign: 'center' }}>
-      <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.375rem' }}>You're doing well — want your full results emailed?</h2>
+      <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.375rem' }}>{t.gateHeadline}</h2>
       <p style={{ color: '#A0A0A8', fontSize: '0.9375rem', margin: '0 0 1.5rem' }}>
-        We'll send your score, every answer's explanation, and a free Journeyman exam study cheat sheet. No spam, unsubscribe anytime.
+        {t.gateBody}
       </p>
       <form onSubmit={(e) => { e.preventDefault(); if (email && !submitting) onSubmit(email); }}>
         <input
@@ -131,7 +132,7 @@ function EmailGate({ onSubmit, onSkip, submitting, error }) {
           required
           autoFocus
           inputMode="email"
-          placeholder="you@email.com"
+          placeholder={t.gateEmailPlaceholder}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={submitting}
@@ -148,60 +149,58 @@ function EmailGate({ onSubmit, onSkip, submitting, error }) {
           disabled={!email || submitting}
           style={{ background: VOLTPAL_YELLOW, color: ON_YELLOW_TEXT, border: 'none' }}
         >
-          {submitting ? 'Saving…' : 'Email My Results →'}
+          {submitting ? t.gateSubmitting : t.gateSubmit}
         </button>
       </form>
       <button className="btn btn-ghost" style={{ marginTop: '0.75rem', fontSize: '0.875rem' }} onClick={onSkip} disabled={submitting}>
-        Continue without email
+        {t.gateSkip}
       </button>
     </div>
   );
 }
 
-function ResultsView({ result, onCtaClick }) {
+function ResultsView({ result, onCtaClick, t }) {
   const { score, total, percent, results } = result;
   const passed = percent >= 70;
   return (
     <div>
       <div className="card" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-        <p style={{ color: '#A0A0A8', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 0.5rem' }}>Your Score</p>
+        <p style={{ color: '#A0A0A8', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 0.5rem' }}>{t.yourScore}</p>
         <p style={{ fontSize: '3rem', fontWeight: 700, margin: 0, color: passed ? VOLTPAL_YELLOW : '#F59E0B' }}>
           {score}/{total}
         </p>
         <p style={{ fontSize: '1rem', color: '#D4D4D8', margin: '0.25rem 0 0' }}>
-          {percent}% — {passed ? 'Above Journeyman pass mark (70%)' : 'Below Journeyman pass mark (70%)'}
+          {passed ? t.abovePassMark({ percent }) : t.belowPassMark({ percent })}
         </p>
       </div>
 
       <div className="card" style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, rgba(250,204,21,0.14), rgba(250,204,21,0.04))', border: '1px solid rgba(250,204,21,0.3)' }}>
-        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.125rem' }}>Get the full Journeyman bank + AI tutor</h3>
-        <p style={{ color: '#D4D4D8', fontSize: '0.9375rem', margin: '0 0 1rem' }}>
-          VoltPal walks you through every wrong answer, tracks your weak domains, and runs full timed mock exams. Free trial, cancel anytime.
-        </p>
+        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.125rem' }}>{t.ctaHeadline}</h3>
+        <p style={{ color: '#D4D4D8', fontSize: '0.9375rem', margin: '0 0 1rem' }}>{t.ctaBody}</p>
         <button
           className="btn btn-primary btn-block"
           onClick={onCtaClick}
           style={{ background: VOLTPAL_YELLOW, color: ON_YELLOW_TEXT, border: 'none' }}
         >
-          Try VoltPal Pro Free →
+          {t.ctaPrimary}
         </button>
       </div>
 
-      <h3 style={{ margin: '1rem 0 0.75rem', fontSize: '1.0625rem' }}>Question-by-question review</h3>
+      <h3 style={{ margin: '1rem 0 0.75rem', fontSize: '1.0625rem' }}>{t.reviewHeadline}</h3>
       {results.map((r) => (
         <div key={r.index} className="card" style={{ marginBottom: '0.75rem', borderLeft: `3px solid ${r.isCorrect ? VOLTPAL_YELLOW : '#EF4444'}` }}>
           <div className="row-between" style={{ marginBottom: '0.5rem' }}>
             <span className="text-muted" style={{ fontSize: '0.8125rem' }}>Q{r.index + 1}{r.topic ? ` · ${r.topic}` : ''}</span>
             <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: r.isCorrect ? VOLTPAL_YELLOW : '#EF4444' }}>
-              {r.isCorrect ? '✓ Correct' : r.userChoice ? '✗ Incorrect' : '— Skipped'}
+              {r.isCorrect ? t.verdictCorrect : r.userChoice ? t.verdictIncorrect : t.verdictSkipped}
             </span>
           </div>
           <p style={{ fontSize: '0.9375rem', lineHeight: 1.5, margin: '0 0 0.75rem' }}>{r.questionText}</p>
           <div style={{ fontSize: '0.875rem', color: '#A0A0A8', marginBottom: '0.5rem' }}>
             {r.userChoice && r.userChoice !== r.correctAnswer && (
-              <div>Your answer: <strong style={{ color: '#EF4444' }}>{r.userChoice}</strong> — {r.options.find((o) => o.key === r.userChoice)?.text}</div>
+              <div>{t.yourAnswer}: <strong style={{ color: '#EF4444' }}>{r.userChoice}</strong> — {r.options.find((o) => o.key === r.userChoice)?.text}</div>
             )}
-            <div>Correct answer: <strong style={{ color: VOLTPAL_YELLOW }}>{r.correctAnswer}</strong> — {r.options.find((o) => o.key === r.correctAnswer)?.text}</div>
+            <div>{t.correctAnswer}: <strong style={{ color: VOLTPAL_YELLOW }}>{r.correctAnswer}</strong> — {r.options.find((o) => o.key === r.correctAnswer)?.text}</div>
           </div>
           {r.explanation && (
             <div style={{ padding: '0.75rem', background: 'rgba(250,204,21,0.06)', borderRadius: 6, fontSize: '0.875rem', lineHeight: 1.55, color: '#D4D4D8' }}>
@@ -209,26 +208,27 @@ function ResultsView({ result, onCtaClick }) {
             </div>
           )}
           {r.standardReference && (
-            <p className="text-muted" style={{ fontSize: '0.8125rem', marginTop: '0.5rem', marginBottom: 0 }}>Ref: {r.standardReference}</p>
+            <p className="text-muted" style={{ fontSize: '0.8125rem', marginTop: '0.5rem', marginBottom: 0 }}>{t.refLabel} {r.standardReference}</p>
           )}
         </div>
       ))}
 
       <div className="card" style={{ marginTop: '1.5rem', textAlign: 'center', background: 'linear-gradient(135deg, rgba(250,204,21,0.14), rgba(250,204,21,0.04))', border: '1px solid rgba(250,204,21,0.3)' }}>
-        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.125rem' }}>Ready for the real thing?</h3>
+        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.125rem' }}>{t.readyHeadline}</h3>
         <button
           className="btn btn-primary"
           style={{ minWidth: 240, background: VOLTPAL_YELLOW, color: ON_YELLOW_TEXT, border: 'none' }}
           onClick={onCtaClick}
         >
-          Start Your Free VoltPal Trial →
+          {t.ctaTrial}
         </button>
       </div>
     </div>
   );
 }
 
-export default function PublicQuiz() {
+export default function PublicQuiz({ lang = 'en' }) {
+  const t = strings(lang);
   const [stage, setStage] = useState('intro'); // intro | quiz | gate | submitting | results | error
   const [quiz, setQuiz] = useState(null);
   const [current, setCurrent] = useState(0);
@@ -245,16 +245,18 @@ export default function PublicQuiz() {
   // Set page metadata (title + OG + JSON-LD) — client-side; sufficient for Google but
   // not for social crawlers (would need SSR/prerender for full sharing support).
   useEffect(() => {
-    document.title = 'Free Journeyman Electrician Practice Quiz — VoltPal';
+    document.documentElement.lang = lang;
+    document.title = t.pageTitle;
     const setMeta = (name, content, attr = 'name') => {
       let el = document.querySelector(`meta[${attr}="${name}"]`);
       if (!el) { el = document.createElement('meta'); el.setAttribute(attr, name); document.head.appendChild(el); }
       el.setAttribute('content', content);
     };
-    setMeta('description', 'Free 10-question journeyman electrician practice quiz with full explanations. Built by VoltPal, the AI field companion for electricians.');
-    setMeta('og:title', 'Free Journeyman Electrician Practice Quiz — VoltPal', 'property');
-    setMeta('og:description', 'See where you stand for the journeyman electrician exam in 5 minutes.', 'property');
+    setMeta('description', t.metaDescription);
+    setMeta('og:title', t.pageTitle, 'property');
+    setMeta('og:description', t.ogDescription, 'property');
     setMeta('og:type', 'website', 'property');
+    setMeta('og:locale', lang === 'es' ? 'es_US' : 'en_US', 'property');
 
     const ld = document.createElement('script');
     ld.type = 'application/ld+json';
@@ -262,24 +264,28 @@ export default function PublicQuiz() {
     ld.textContent = JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'Course',
-      name: 'Journeyman Electrician Exam Prep — VoltPal',
-      description: 'AI-assisted journeyman electrician exam prep with a free 10-question diagnostic quiz, full question bank, NEC code lookups, and per-domain weak-area drills.',
+      inLanguage: lang,
+      name: lang === 'es' ? 'Preparación para examen Journeyman — VoltPal' : 'Journeyman Electrician Exam Prep — VoltPal',
+      description: lang === 'es'
+        ? 'Preparación para examen Journeyman asistida por AI con examen diagnóstico gratis de 10 preguntas, banco completo de preguntas, búsquedas del código NEC y ejercicios enfocados por dominio.'
+        : 'AI-assisted journeyman electrician exam prep with a free 10-question diagnostic quiz, full question bank, NEC code lookups, and per-domain weak-area drills.',
       provider: { '@type': 'Organization', name: 'VoltPal', sameAs: 'https://voltpal.tradepals.net' },
-      hasCourseInstance: { '@type': 'CourseInstance', courseMode: 'Online', courseWorkload: 'PT5M' },
+      hasCourseInstance: { '@type': 'CourseInstance', courseMode: 'Online', courseWorkload: 'PT5M', inLanguage: lang },
     });
     document.head.appendChild(ld);
     return () => { document.getElementById('journeyman-quiz-schema')?.remove(); };
-  }, []);
+  }, [lang, t]);
 
   async function loadQuiz() {
     try {
-      const res = await fetch(`${API_ROOT}/api/public-quiz/journeyman`);
+      const url = `${API_ROOT}/api/public-quiz/journeyman${lang === 'es' ? '?lang=es' : ''}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       const data = await res.json();
       setQuiz(data);
       setSessionToken(data.sessionToken);
       setStage('quiz');
-      track('quiz_start', { source: data.source });
+      track('quiz_start', { source: data.source, lang });
     } catch (err) {
       setLoadError(err.message || 'Failed to load quiz');
       setStage('error');
@@ -381,13 +387,22 @@ export default function PublicQuiz() {
 
   function handleCtaClick() {
     track('quiz_cta_click');
-    window.location.href = '/signup?utm_source=journeyman_quiz&utm_medium=results_page&utm_campaign=public_quiz';
+    const utmContent = lang === 'es' ? '&utm_content=es' : '';
+    window.location.href = `/signup?utm_source=journeyman_quiz&utm_medium=results_page&utm_campaign=public_quiz${utmContent}`;
   }
+
+  // Notice shown on the Spanish flow if the server reports content fell back to English
+  // (i.e. content_es seeds not yet applied). Quiet, info-tone, doesn't block use.
+  const fallbackNotice = lang === 'es' && quiz?.translationStatus === 'fallback-en' ? (
+    <p style={{ color: '#A0A0A8', fontSize: '0.8125rem', textAlign: 'center', margin: '0 0 0.75rem' }}>
+      {t.fallbackNotice}
+    </p>
+  ) : null;
 
   if (stage === 'intro') {
     return (
       <div className="page" style={{ maxWidth: 720, margin: '0 auto', padding: '1rem' }}>
-        <Hero onStart={loadQuiz} certName="Journeyman" />
+        <Hero onStart={loadQuiz} certName="Journeyman" t={t} />
       </div>
     );
   }
@@ -395,12 +410,12 @@ export default function PublicQuiz() {
   if (stage === 'error') {
     return (
       <div className="page" style={{ maxWidth: 480, margin: '0 auto', padding: '2rem 1rem', textAlign: 'center' }}>
-        <p style={{ color: '#EF4444', marginBottom: '1rem' }}>Something went wrong: {loadError}</p>
+        <p style={{ color: '#EF4444', marginBottom: '1rem' }}>{t.somethingWrong} {loadError}</p>
         <button
           className="btn btn-primary"
           onClick={() => { setLoadError(null); setStage('intro'); }}
           style={{ background: VOLTPAL_YELLOW, color: ON_YELLOW_TEXT, border: 'none' }}
-        >Try again</button>
+        >{t.tryAgain}</button>
       </div>
     );
   }
@@ -409,7 +424,7 @@ export default function PublicQuiz() {
     return (
       <div className="spinner-container">
         <div className="spinner" />
-        <p className="spinner-message">Grading your quiz…</p>
+        <p className="spinner-message">{t.grading}</p>
       </div>
     );
   }
@@ -417,7 +432,7 @@ export default function PublicQuiz() {
   if (stage === 'results' && result) {
     return (
       <div className="page" style={{ maxWidth: 720, margin: '0 auto', padding: '1rem' }}>
-        <ResultsView result={result} onCtaClick={handleCtaClick} />
+        <ResultsView result={result} onCtaClick={handleCtaClick} t={t} />
       </div>
     );
   }
@@ -425,7 +440,7 @@ export default function PublicQuiz() {
   if (stage === 'gate') {
     return (
       <div className="page" style={{ maxWidth: 720, margin: '0 auto', padding: '1rem' }}>
-        <EmailGate onSubmit={submitEmail} onSkip={skipEmail} submitting={emailSubmitting} error={emailError} />
+        <EmailGate onSubmit={submitEmail} onSkip={skipEmail} submitting={emailSubmitting} error={emailError} t={t} />
       </div>
     );
   }
@@ -435,6 +450,7 @@ export default function PublicQuiz() {
   const q = quiz.questions[current];
   return (
     <div className="page" style={{ maxWidth: 720, margin: '0 auto', padding: '1rem' }}>
+      {fallbackNotice}
       <QuestionCard
         q={q}
         index={current}
@@ -445,6 +461,7 @@ export default function PublicQuiz() {
         onPrev={goPrev}
         canGoBack={current > 0}
         isLast={current === quiz.questions.length - 1}
+        t={t}
       />
     </div>
   );
