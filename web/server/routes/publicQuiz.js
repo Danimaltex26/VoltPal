@@ -1,12 +1,13 @@
 // Public cert-prep quiz (no auth). Marketing surface for paid + organic traffic.
-// Three endpoints:
-//   GET  /api/public-quiz/journeyman    → returns 10 questions WITHOUT answers
+// Routes (all return/accept the same shape — cert is in the URL):
+//   GET  /api/public-quiz/:cert         → returns 10 questions WITHOUT answers
 //   POST /api/public-quiz/capture-email → stores email + partial score, returns continue token
-//   POST /api/public-quiz/submit        → grades, returns full results with explanations + sends Resend email
+//   POST /api/public-quiz/submit        → grades, returns full results + sends Resend results email
 //
-// Question selection: prefers a curated PUBLIC_JOURNEYMAN_SHOWCASE_IDS list (env or const),
-// falls back to a random sample of cert_level='JOURNEYMAN' rows. Falls back further to
-// APPRENTICE if JOURNEYMAN bank is empty in this environment.
+// Supported :cert slugs are listed in CERTS below. Each maps to a voltpal.training_questions
+// cert_level value plus per-cert display + email config.
+//
+// Backward-compat: GET /journeyman still works (it's just :cert=journeyman).
 
 import { Router } from "express";
 import crypto from "crypto";
@@ -28,15 +29,57 @@ const supabasePublic = createClient(
 
 const QUESTION_COUNT = 10;
 
-// Curated showcase IDs. Populate after reviewing the bank — until then we fall back to
-// random sampling so the route works out of the box.
-const PUBLIC_JOURNEYMAN_SHOWCASE_IDS = (process.env.PUBLIC_JOURNEYMAN_SHOWCASE_IDS || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+// Per-cert config. URL slug → DB cert_level + display + email source.
+// passPercent mirrors server/config/examBlueprints.js exactly.
+const CERTS = {
+  apprentice: {
+    cert_level: "APPRENTICE",
+    source: "voltpal_apprentice",
+    title: "Free Apprentice Electrician Practice Quiz",
+    titleEs: "Examen Gratis de Práctica Aprendiz Electricista",
+    certName: "Apprentice Electrician",
+    certNameEs: "Aprendiz Electricista",
+    passPercent: 70,
+    showcaseEnvVar: "PUBLIC_APPRENTICE_SHOWCASE_IDS",
+    fallbackCert: null,
+  },
+  journeyman: {
+    cert_level: "JOURNEYMAN",
+    source: "voltpal_journeyman",
+    title: "Free Journeyman Electrician Practice Quiz",
+    titleEs: "Examen Gratis de Práctica Journeyman",
+    certName: "Journeyman Electrician",
+    certNameEs: "Journeyman",
+    passPercent: 70,
+    showcaseEnvVar: "PUBLIC_JOURNEYMAN_SHOWCASE_IDS",
+    fallbackCert: "APPRENTICE",
+  },
+  master: {
+    cert_level: "MASTER",
+    source: "voltpal_master",
+    title: "Free Master Electrician Practice Quiz",
+    titleEs: "Examen Gratis de Práctica Master Electrician",
+    certName: "Master Electrician",
+    certNameEs: "Master Electrician",
+    passPercent: 75,
+    showcaseEnvVar: "PUBLIC_MASTER_SHOWCASE_IDS",
+    fallbackCert: "JOURNEYMAN",
+  },
+  "nfpa-70e": {
+    cert_level: "NFPA_70E",
+    source: "voltpal_nfpa_70e",
+    title: "Free NFPA 70E Practice Quiz",
+    titleEs: "Examen Gratis de Práctica NFPA 70E",
+    certName: "NFPA 70E",
+    certNameEs: "NFPA 70E",
+    passPercent: 70,
+    showcaseEnvVar: "PUBLIC_NFPA_70E_SHOWCASE_IDS",
+    fallbackCert: null,
+  },
+};
 
 // HMAC-signed continue token. Lets us trust that the client actually hit the email gate
-// without storing per-session server state. Token carries: email + question IDs in order.
+// without storing per-session server state. Token carries: source, ids, lang, email?.
 const TOKEN_SECRET = process.env.PUBLIC_QUIZ_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "dev-only-secret";
 
 function signToken(payload) {
@@ -66,10 +109,7 @@ function shuffle(arr) {
   return a;
 }
 
-// Apply Spanish content_es overlay to a question row if available.
-// Returns the question with question_text / option_a..d / explanation overridden
-// from the content_es JSONB column. Falls back to English where Spanish is absent
-// (per-field — so a partial translation still surfaces what it has).
+// Apply Spanish content_es overlay if available. Per-field fallback to English.
 function applyEsOverlay(q) {
   const es = q.content_es;
   if (!es || typeof es !== "object") return q;
@@ -84,18 +124,12 @@ function applyEsOverlay(q) {
   };
 }
 
-// Pick the column list to select; include content_es only when content_es column exists
-// (migration 050 applied). Falls back gracefully if the column doesn't exist yet.
 const ENGLISH_COLS = "id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference";
 const WITH_ES_COLS = ENGLISH_COLS + ", content_es";
 
-async function loadJourneymanQuestions(lang) {
+async function loadCertQuestions(cfg, lang) {
   const wantEs = lang === "es";
-  // When serving Spanish, try with content_es column; if migration 050 isn't applied
-  // yet, retry with English-only columns. esColumnAvailable tracks the outcome so
-  // subsequent fallback queries don't repeat the same failed select.
   let cols = wantEs ? WITH_ES_COLS : ENGLISH_COLS;
-  let esColumnAvailable = wantEs;
 
   function isColumnMissingError(err) {
     return err && /content_es/.test(err.message || "");
@@ -106,7 +140,7 @@ async function loadJourneymanQuestions(lang) {
     const r = await supabaseVolt
       .from("training_questions")
       .select(cols)
-      .eq("cert_level", "JOURNEYMAN")
+      .eq("cert_level", cfg.cert_level)
       .eq("flagged_quality", false)
       .not("content_es", "is", null)
       .limit(QUESTION_COUNT);
@@ -114,58 +148,56 @@ async function loadJourneymanQuestions(lang) {
       return { questions: r.data, translationStatus: "es" };
     }
     if (isColumnMissingError(r.error)) {
-      console.warn("[public-quiz] content_es column missing (migration 050 not applied) — falling back to English.");
-      esColumnAvailable = false;
+      console.warn(`[public-quiz] content_es column missing — falling back to English.`);
       cols = ENGLISH_COLS;
     }
-    // Fall through to English with a warning header
   }
 
-  // 2. Try curated showcase IDs.
-  if (PUBLIC_JOURNEYMAN_SHOWCASE_IDS.length > 0) {
-    const r = await supabaseVolt
-      .from("training_questions")
-      .select(cols)
-      .in("id", PUBLIC_JOURNEYMAN_SHOWCASE_IDS);
+  // 2. Curated showcase IDs (if env var set).
+  const showcaseIds = (process.env[cfg.showcaseEnvVar] || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (showcaseIds.length > 0) {
+    const r = await supabaseVolt.from("training_questions").select(cols).in("id", showcaseIds);
     if (!r.error && r.data && r.data.length > 0) {
       return { questions: r.data, translationStatus: wantEs ? "fallback-en" : "en" };
     }
   }
 
-  // 3. Random sample of JOURNEYMAN-level questions.
-  const jmR = await supabaseVolt
+  // 3. Random sample of the requested cert.
+  const primary = await supabaseVolt
     .from("training_questions")
     .select(cols)
-    .eq("cert_level", "JOURNEYMAN")
+    .eq("cert_level", cfg.cert_level)
     .eq("flagged_quality", false)
     .limit(50);
-  if (!jmR.error && jmR.data && jmR.data.length >= QUESTION_COUNT) {
-    return { questions: shuffle(jmR.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
+  if (!primary.error && primary.data && primary.data.length >= QUESTION_COUNT) {
+    return { questions: shuffle(primary.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
   }
-  if (isColumnMissingError(jmR.error) && esColumnAvailable) {
-    // Retry English-only one more time (in case showcase path didn't trip it)
-    esColumnAvailable = false;
-    cols = ENGLISH_COLS;
-    const jmRetry = await supabaseVolt
+  if (isColumnMissingError(primary.error)) {
+    const retry = await supabaseVolt
       .from("training_questions")
-      .select(cols)
-      .eq("cert_level", "JOURNEYMAN")
+      .select(ENGLISH_COLS)
+      .eq("cert_level", cfg.cert_level)
       .eq("flagged_quality", false)
       .limit(50);
-    if (!jmRetry.error && jmRetry.data && jmRetry.data.length >= QUESTION_COUNT) {
-      return { questions: shuffle(jmRetry.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
+    if (!retry.error && retry.data && retry.data.length >= QUESTION_COUNT) {
+      return { questions: shuffle(retry.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
     }
   }
 
-  // 4. Fall back to APPRENTICE.
-  const appR = await supabaseVolt
-    .from("training_questions")
-    .select(cols)
-    .eq("cert_level", "APPRENTICE")
-    .eq("flagged_quality", false)
-    .limit(50);
-  if (!appR.error && appR.data && appR.data.length >= QUESTION_COUNT) {
-    return { questions: shuffle(appR.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
+  // 4. Fall back to a friendlier cert if configured (e.g. master → journeyman).
+  if (cfg.fallbackCert) {
+    const fb = await supabaseVolt
+      .from("training_questions")
+      .select(ENGLISH_COLS)
+      .eq("cert_level", cfg.fallbackCert)
+      .eq("flagged_quality", false)
+      .limit(50);
+    if (!fb.error && fb.data && fb.data.length >= QUESTION_COUNT) {
+      return { questions: shuffle(fb.data).slice(0, QUESTION_COUNT), translationStatus: wantEs ? "fallback-en" : "en" };
+    }
   }
 
   return { questions: [], translationStatus: "none" };
@@ -186,38 +218,38 @@ function toClientQuestion(q, index) {
   };
 }
 
-// GET /api/public-quiz/journeyman?lang=en|es
-// Returns 10 questions without correct answers. Issues a session token used by submit.
-// When ?lang=es, prefers questions with a Spanish content_es payload (after migration 050 + 051);
-// falls back to English with X-Translation-Status: fallback-en header if no Spanish content found.
-router.get("/journeyman", async (req, res) => {
+// GET /api/public-quiz/:cert?lang=en|es
+router.get("/:cert", async (req, res) => {
   try {
+    const cfg = CERTS[req.params.cert];
+    if (!cfg) {
+      return res.status(404).json({ error: "Unknown cert", availableCerts: Object.keys(CERTS) });
+    }
     const lang = req.query.lang === "es" ? "es" : "en";
-    const { questions: raw, translationStatus } = await loadJourneymanQuestions(lang);
+    const { questions: raw, translationStatus } = await loadCertQuestions(cfg, lang);
     if (raw.length === 0) {
       return res.status(503).json({ error: "Quiz unavailable", message: "No questions seeded for this environment." });
     }
 
     const picked = raw.slice(0, QUESTION_COUNT);
-    // Apply Spanish overlay when serving Spanish content
     const localized = translationStatus === "es" ? picked.map(applyEsOverlay) : picked;
 
     const sessionToken = signToken({
-      source: lang === "es" ? "voltpal_journeyman_es" : "voltpal_journeyman",
+      source: lang === "es" ? `${cfg.source}_es` : cfg.source,
+      certSlug: req.params.cert,
       ids: picked.map((q) => q.id),
       lang,
       issued: Date.now(),
     });
 
-    // Surface translation status as a response header so the client can show a notice if it falls back
     res.set("X-Translation-Status", translationStatus);
 
     res.json({
-      source: lang === "es" ? "voltpal_journeyman_es" : "voltpal_journeyman",
-      title: lang === "es"
-        ? "Examen Gratis de Práctica Journeyman"
-        : "Free Journeyman Electrician Practice Quiz",
-      certName: lang === "es" ? "Journeyman" : "Journeyman Electrician",
+      source: lang === "es" ? `${cfg.source}_es` : cfg.source,
+      title: lang === "es" ? cfg.titleEs : cfg.title,
+      certName: lang === "es" ? cfg.certNameEs : cfg.certName,
+      certSlug: req.params.cert,
+      passPercent: cfg.passPercent,
       lang,
       translationStatus,
       totalQuestions: picked.length,
@@ -226,14 +258,12 @@ router.get("/journeyman", async (req, res) => {
       sessionToken,
     });
   } catch (err) {
-    console.error("GET /public-quiz/journeyman error:", err);
+    console.error(`GET /public-quiz/${req.params.cert} error:`, err);
     res.status(500).json({ error: "Failed to load quiz" });
   }
 });
 
-// POST /api/public-quiz/capture-email
-// Body: { email, sessionToken, partialAnswers: [{ questionIndex, choice }] }
-// Stores an early lead (score may be partial) and returns a continue token.
+// POST /api/public-quiz/capture-email — unchanged contract; cert is encoded in the session token.
 router.post("/capture-email", async (req, res) => {
   try {
     const { email, sessionToken, partialAnswers = [], utm = {}, referrer = "" } = req.body || {};
@@ -243,7 +273,6 @@ router.post("/capture-email", async (req, res) => {
     const session = verifyToken(sessionToken);
     if (!session) return res.status(400).json({ error: "Invalid session token" });
 
-    // Grade whatever the user has answered so far (informational, not gated)
     let partialScore = null;
     if (Array.isArray(partialAnswers) && partialAnswers.length > 0) {
       const ids = session.ids.filter((_, i) => partialAnswers.some((a) => a.questionIndex === i));
@@ -277,9 +306,7 @@ router.post("/capture-email", async (req, res) => {
   }
 });
 
-// POST /api/public-quiz/submit
-// Body: { sessionToken, answers: [{ questionIndex, choice }] }
-// Returns full graded results with correct answer + explanation per question.
+// POST /api/public-quiz/submit — unchanged contract; cert + lang encoded in session token.
 router.post("/submit", async (req, res) => {
   try {
     const { sessionToken, answers = [] } = req.body || {};
@@ -287,13 +314,11 @@ router.post("/submit", async (req, res) => {
     if (!session) return res.status(400).json({ error: "Invalid session token" });
 
     const lang = session.lang === "es" ? "es" : "en";
-    // Pull the same columns (including content_es when serving Spanish), and apply the overlay
     const cols = lang === "es"
       ? "id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference, content_es"
       : "id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference";
     let qResp = await supabaseVolt.from("training_questions").select(cols).in("id", session.ids);
     if (qResp.error && lang === "es" && /content_es/.test(qResp.error.message)) {
-      // Column missing (migration 050 not applied) — retry without content_es
       qResp = await supabaseVolt
         .from("training_questions")
         .select("id, topic, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, standard_reference")
@@ -330,8 +355,6 @@ router.post("/submit", async (req, res) => {
       };
     });
 
-    // If the user provided email upstream, write a finalized lead row with the real score
-    // and send the results email (fire-and-forget — don't block the response on Resend).
     if (session.email) {
       await supabasePublic.from("quiz_leads").insert({
         email: session.email,

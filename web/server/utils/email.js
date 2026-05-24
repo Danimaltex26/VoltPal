@@ -72,12 +72,37 @@ function buildAnalysisReadyEmail({ appKey, displayName, analysisType }) {
 // ── Public cert-prep quiz results email ───────────────────────────────────────
 
 const QUIZ_CONFIG = {
+  voltpal_apprentice: {
+    appKey: "voltpal",
+    certName: "Apprentice",
+    certFull: "Apprentice Electrician",
+    passPercent: 70,
+    signupPath: "/signup?utm_source=apprentice_quiz&utm_medium=email&utm_campaign=public_quiz",
+    quizSlug: "apprentice-practice",
+  },
   voltpal_journeyman: {
     appKey: "voltpal",
     certName: "Journeyman",
     certFull: "Journeyman Electrician",
     passPercent: 70,
     signupPath: "/signup?utm_source=journeyman_quiz&utm_medium=email&utm_campaign=public_quiz",
+    quizSlug: "journeyman-practice",
+  },
+  voltpal_master: {
+    appKey: "voltpal",
+    certName: "Master",
+    certFull: "Master Electrician",
+    passPercent: 75,
+    signupPath: "/signup?utm_source=master_quiz&utm_medium=email&utm_campaign=public_quiz",
+    quizSlug: "master-practice",
+  },
+  voltpal_nfpa_70e: {
+    appKey: "voltpal",
+    certName: "NFPA 70E",
+    certFull: "NFPA 70E",
+    passPercent: 70,
+    signupPath: "/signup?utm_source=nfpa_70e_quiz&utm_medium=email&utm_campaign=public_quiz",
+    quizSlug: "nfpa-70e-practice",
   },
 };
 
@@ -85,18 +110,20 @@ const QUIZ_CONFIG = {
 // All copy is Claude-drafted Mexican Spanish — review with a native speaker before
 // wide distribution. Cert names (Journeyman) stay in English per VoltPal Spanish brief.
 // TODO[native-speaker review]: confirm tone (semi-formal "tú" used here) + dialect.
-const QUIZ_CONFIG_ES = {
-  voltpal_journeyman: {
+// Shared Spanish label set — only the cert name changes per cert. Helper builds the full config.
+// TODO[native-speaker review]: same caveat as English-side — Spanish strings are Claude-drafted.
+function buildEsConfig({ certName, certSlug, quizSlug, passPercent }) {
+  return {
     appKey: "voltpal",
-    certName: "Journeyman",
-    passPercent: 70,
-    signupPath: "/signup?utm_source=journeyman_quiz&utm_medium=email&utm_campaign=public_quiz&utm_content=es",
-    quizUrl: "https://voltpal.tradepals.net/es/journeyman-practice",
-    subject: (score, total) => `Tu resultado del examen de práctica Journeyman — ${score}/${total}`,
+    certName,
+    passPercent,
+    signupPath: `/signup?utm_source=${certSlug}_quiz&utm_medium=email&utm_campaign=public_quiz&utm_content=es`,
+    quizUrl: `https://voltpal.tradepals.net/es/${quizSlug}`,
+    subject: (score, total) => `Tu resultado del examen de práctica ${certName} — ${score}/${total}`,
     scoreLabel: "Tu puntaje",
-    passedAbove: (pct, mark) => `${pct}% — Arriba del puntaje mínimo Journeyman (${mark}%)`,
-    passedBelow: (pct, mark) => `${pct}% — Abajo del puntaje mínimo Journeyman (${mark}%)`,
-    ctaHeadline: "Obtén el banco completo Journeyman + tutor AI",
+    passedAbove: (pct, mark) => `${pct}% — Arriba del puntaje mínimo ${certName} (${mark}%)`,
+    passedBelow: (pct, mark) => `${pct}% — Abajo del puntaje mínimo ${certName} (${mark}%)`,
+    ctaHeadline: `Obtén el banco completo ${certName} + tutor AI`,
     ctaBody: "VoltPal te explica cada respuesta incorrecta, identifica tus áreas débiles y corre simulacros completos cronometrados. Prueba gratis, cancela cuando quieras.",
     ctaPrimary: "Prueba VoltPal Pro Gratis →",
     ctaFooter: "Comienza tu prueba gratuita →",
@@ -107,9 +134,16 @@ const QUIZ_CONFIG_ES = {
     yourAnswer: "Tu respuesta",
     correctAnswer: "Respuesta correcta",
     refLabel: "Ref:",
-    footerLine: (appUrl) => `Tomaste el examen gratis de práctica Journeyman en ${appUrl}/es/journeyman-practice.`,
+    footerLine: (appUrl) => `Tomaste el examen gratis de práctica ${certName} en ${appUrl}/es/${quizSlug}.`,
     footerCompany: "VoltPal es un producto de TradePals, LLC",
-  },
+  };
+}
+
+const QUIZ_CONFIG_ES = {
+  voltpal_apprentice: buildEsConfig({ certName: "Aprendiz", certSlug: "apprentice", quizSlug: "apprentice-practice", passPercent: 70 }),
+  voltpal_journeyman: buildEsConfig({ certName: "Journeyman", certSlug: "journeyman", quizSlug: "journeyman-practice", passPercent: 70 }),
+  voltpal_master: buildEsConfig({ certName: "Master Electrician", certSlug: "master", quizSlug: "master-practice", passPercent: 75 }),
+  voltpal_nfpa_70e: buildEsConfig({ certName: "NFPA 70E", certSlug: "nfpa-70e", quizSlug: "nfpa-70e-practice", passPercent: 70 }),
 };
 
 function buildQuizResultsEmail({ source, score, total, results, lang }) {

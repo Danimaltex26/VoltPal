@@ -51,7 +51,7 @@ function Hero({ onStart, certName, t }) {
   return (
     <div style={{ textAlign: 'center', padding: '2.5rem 0 2rem' }}>
       <h1 style={{ fontSize: 'clamp(1.75rem, 5vw, 2.5rem)', margin: '0 0 0.75rem', lineHeight: 1.15 }}>
-        {t.heroTitle}
+        {t.heroTitle({ certName })}
       </h1>
       <p style={{ color: '#A0A0A8', fontSize: '1.0625rem', margin: '0 0 1.75rem', maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
         {t.heroSubtitle({ certName })}
@@ -118,13 +118,13 @@ function QuestionCard({ q, index, total, selected, onSelect, onNext, onPrev, can
   );
 }
 
-function EmailGate({ onSubmit, onSkip, submitting, error, t }) {
+function EmailGate({ onSubmit, onSkip, submitting, error, t, certName }) {
   const [email, setEmail] = useState('');
   return (
     <div className="card" style={{ maxWidth: 480, margin: '2rem auto', textAlign: 'center' }}>
       <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.375rem' }}>{t.gateHeadline}</h2>
       <p style={{ color: '#A0A0A8', fontSize: '0.9375rem', margin: '0 0 1.5rem' }}>
-        {t.gateBody}
+        {t.gateBody({ certName })}
       </p>
       <form onSubmit={(e) => { e.preventDefault(); if (email && !submitting) onSubmit(email); }}>
         <input
@@ -159,9 +159,9 @@ function EmailGate({ onSubmit, onSkip, submitting, error, t }) {
   );
 }
 
-function ResultsView({ result, onCtaClick, t }) {
+function ResultsView({ result, onCtaClick, t, certName, passPercent }) {
   const { score, total, percent, results } = result;
-  const passed = percent >= 70;
+  const passed = percent >= passPercent;
   return (
     <div>
       <div className="card" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
@@ -170,12 +170,14 @@ function ResultsView({ result, onCtaClick, t }) {
           {score}/{total}
         </p>
         <p style={{ fontSize: '1rem', color: '#D4D4D8', margin: '0.25rem 0 0' }}>
-          {passed ? t.abovePassMark({ percent }) : t.belowPassMark({ percent })}
+          {passed
+            ? t.abovePassMark({ percent, certName, passPercent })
+            : t.belowPassMark({ percent, certName, passPercent })}
         </p>
       </div>
 
       <div className="card" style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, rgba(250,204,21,0.14), rgba(250,204,21,0.04))', border: '1px solid rgba(250,204,21,0.3)' }}>
-        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.125rem' }}>{t.ctaHeadline}</h3>
+        <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.125rem' }}>{t.ctaHeadline({ certName })}</h3>
         <p style={{ color: '#D4D4D8', fontSize: '0.9375rem', margin: '0 0 1rem' }}>{t.ctaBody}</p>
         <button
           className="btn btn-primary btn-block"
@@ -227,7 +229,7 @@ function ResultsView({ result, onCtaClick, t }) {
   );
 }
 
-export default function PublicQuiz({ lang = 'en' }) {
+export default function PublicQuiz({ lang = 'en', cert = 'journeyman' }) {
   const t = strings(lang);
   const [stage, setStage] = useState('intro'); // intro | quiz | gate | submitting | results | error
   const [quiz, setQuiz] = useState(null);
@@ -242,50 +244,52 @@ export default function PublicQuiz({ lang = 'en' }) {
   const [loadError, setLoadError] = useState(null);
   const utmRef = useRef(getUtmParams());
 
+  // certName is hydrated from the server response after loadQuiz; we fall back to the
+  // capitalized cert slug for the very first paint so meta tags aren't blank.
+  const certNameForMeta = quiz?.certName || cert.charAt(0).toUpperCase() + cert.slice(1).replace('-', ' ');
+
   // Set page metadata (title + OG + JSON-LD) — client-side; sufficient for Google but
   // not for social crawlers (would need SSR/prerender for full sharing support).
   useEffect(() => {
     document.documentElement.lang = lang;
-    document.title = t.pageTitle;
+    document.title = t.pageTitle({ certName: certNameForMeta });
     const setMeta = (name, content, attr = 'name') => {
       let el = document.querySelector(`meta[${attr}="${name}"]`);
       if (!el) { el = document.createElement('meta'); el.setAttribute(attr, name); document.head.appendChild(el); }
       el.setAttribute('content', content);
     };
-    setMeta('description', t.metaDescription);
-    setMeta('og:title', t.pageTitle, 'property');
-    setMeta('og:description', t.ogDescription, 'property');
+    setMeta('description', t.metaDescription({ certName: certNameForMeta }));
+    setMeta('og:title', t.pageTitle({ certName: certNameForMeta }), 'property');
+    setMeta('og:description', t.ogDescription({ certName: certNameForMeta }), 'property');
     setMeta('og:type', 'website', 'property');
     setMeta('og:locale', lang === 'es' ? 'es_US' : 'en_US', 'property');
 
     const ld = document.createElement('script');
     ld.type = 'application/ld+json';
-    ld.id = 'journeyman-quiz-schema';
+    ld.id = `${cert}-quiz-schema`;
     ld.textContent = JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'Course',
       inLanguage: lang,
-      name: lang === 'es' ? 'Preparación para examen Journeyman — VoltPal' : 'Journeyman Electrician Exam Prep — VoltPal',
-      description: lang === 'es'
-        ? 'Preparación para examen Journeyman asistida por AI con examen diagnóstico gratis de 10 preguntas, banco completo de preguntas, búsquedas del código NEC y ejercicios enfocados por dominio.'
-        : 'AI-assisted journeyman electrician exam prep with a free 10-question diagnostic quiz, full question bank, NEC code lookups, and per-domain weak-area drills.',
+      name: `${certNameForMeta} Exam Prep — VoltPal`,
+      description: `AI-assisted ${certNameForMeta} electrician exam prep with a free 10-question diagnostic quiz, full question bank, NEC code lookups, and per-domain weak-area drills.`,
       provider: { '@type': 'Organization', name: 'VoltPal', sameAs: 'https://voltpal.tradepals.net' },
       hasCourseInstance: { '@type': 'CourseInstance', courseMode: 'Online', courseWorkload: 'PT5M', inLanguage: lang },
     });
     document.head.appendChild(ld);
-    return () => { document.getElementById('journeyman-quiz-schema')?.remove(); };
-  }, [lang, t]);
+    return () => { document.getElementById(`${cert}-quiz-schema`)?.remove(); };
+  }, [lang, t, cert, certNameForMeta]);
 
   async function loadQuiz() {
     try {
-      const url = `${API_ROOT}/api/public-quiz/journeyman${lang === 'es' ? '?lang=es' : ''}`;
+      const url = `${API_ROOT}/api/public-quiz/${cert}${lang === 'es' ? '?lang=es' : ''}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       const data = await res.json();
       setQuiz(data);
       setSessionToken(data.sessionToken);
       setStage('quiz');
-      track('quiz_start', { source: data.source, lang });
+      track('quiz_start', { source: data.source, lang, cert });
     } catch (err) {
       setLoadError(err.message || 'Failed to load quiz');
       setStage('error');
@@ -388,7 +392,8 @@ export default function PublicQuiz({ lang = 'en' }) {
   function handleCtaClick() {
     track('quiz_cta_click');
     const utmContent = lang === 'es' ? '&utm_content=es' : '';
-    window.location.href = `/signup?utm_source=journeyman_quiz&utm_medium=results_page&utm_campaign=public_quiz${utmContent}`;
+    const utmSource = `${cert.replace('-', '_')}_quiz`;
+    window.location.href = `/signup?utm_source=${utmSource}&utm_medium=results_page&utm_campaign=public_quiz${utmContent}`;
   }
 
   // Notice shown on the Spanish flow if the server reports content fell back to English
@@ -402,7 +407,7 @@ export default function PublicQuiz({ lang = 'en' }) {
   if (stage === 'intro') {
     return (
       <div className="page" style={{ maxWidth: 720, margin: '0 auto', padding: '1rem' }}>
-        <Hero onStart={loadQuiz} certName="Journeyman" t={t} />
+        <Hero onStart={loadQuiz} certName={certNameForMeta} t={t} />
       </div>
     );
   }
@@ -432,7 +437,13 @@ export default function PublicQuiz({ lang = 'en' }) {
   if (stage === 'results' && result) {
     return (
       <div className="page" style={{ maxWidth: 720, margin: '0 auto', padding: '1rem' }}>
-        <ResultsView result={result} onCtaClick={handleCtaClick} t={t} />
+        <ResultsView
+          result={result}
+          onCtaClick={handleCtaClick}
+          t={t}
+          certName={quiz?.certName || certNameForMeta}
+          passPercent={quiz?.passPercent || 70}
+        />
       </div>
     );
   }
@@ -440,7 +451,14 @@ export default function PublicQuiz({ lang = 'en' }) {
   if (stage === 'gate') {
     return (
       <div className="page" style={{ maxWidth: 720, margin: '0 auto', padding: '1rem' }}>
-        <EmailGate onSubmit={submitEmail} onSkip={skipEmail} submitting={emailSubmitting} error={emailError} t={t} />
+        <EmailGate
+          onSubmit={submitEmail}
+          onSkip={skipEmail}
+          submitting={emailSubmitting}
+          error={emailError}
+          t={t}
+          certName={quiz?.certName || certNameForMeta}
+        />
       </div>
     );
   }

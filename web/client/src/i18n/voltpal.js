@@ -1,5 +1,7 @@
-// Tiny i18n string map for the VoltPal public Spanish funnel (Phase 1).
+// i18n string map for the VoltPal public quiz funnels.
 // English baseline + Mexican Spanish translations.
+// Strings that vary per cert take a { certName, passPercent } parameter so the same
+// component renders for Apprentice, Journeyman, Master, NFPA 70E, etc.
 //
 // TODO[native-speaker review]: every Spanish string here is Claude-drafted. Have
 // a native speaker review before launch — Mexican Spanish dialect for US trades.
@@ -9,9 +11,9 @@
 export const STRINGS = {
   en: {
     // Hero
-    heroTitle: 'Free Journeyman Practice Quiz',
+    heroTitle: ({ certName }) => `Free ${certName} Practice Quiz`,
     heroSubtitle: ({ certName }) =>
-      `10 questions. 5 minutes. See where you stand for the ${certName} electrician exam — with explanations for every answer.`,
+      `10 questions. 5 minutes. See where you stand for the ${certName} exam — with explanations for every answer.`,
     heroStart: 'Start Quiz →',
     heroFooter: 'Built by VoltPal — the AI field companion for electricians.',
 
@@ -23,8 +25,8 @@ export const STRINGS = {
 
     // Email gate
     gateHeadline: "You're doing well — want your full results emailed?",
-    gateBody:
-      "We'll send your score, every answer's explanation, and a free Journeyman exam study cheat sheet. No spam, unsubscribe anytime.",
+    gateBody: ({ certName }) =>
+      `We'll send your score, every answer's explanation, and a free ${certName} exam study cheat sheet. No spam, unsubscribe anytime.`,
     gateEmailPlaceholder: 'you@email.com',
     gateSubmit: 'Email My Results →',
     gateSubmitting: 'Saving…',
@@ -35,9 +37,11 @@ export const STRINGS = {
 
     // Results
     yourScore: 'Your Score',
-    abovePassMark: ({ percent }) => `${percent}% — Above Journeyman pass mark (70%)`,
-    belowPassMark: ({ percent }) => `${percent}% — Below Journeyman pass mark (70%)`,
-    ctaHeadline: 'Get the full Journeyman bank + AI tutor',
+    abovePassMark: ({ percent, certName, passPercent }) =>
+      `${percent}% — Above ${certName} pass mark (${passPercent}%)`,
+    belowPassMark: ({ percent, certName, passPercent }) =>
+      `${percent}% — Below ${certName} pass mark (${passPercent}%)`,
+    ctaHeadline: ({ certName }) => `Get the full ${certName} bank + AI tutor`,
     ctaBody:
       'VoltPal walks you through every wrong answer, tracks your weak domains, and runs full timed mock exams. Free trial, cancel anytime.',
     ctaPrimary: 'Try VoltPal Pro Free →',
@@ -59,17 +63,18 @@ export const STRINGS = {
     fallbackNotice: '',
 
     // Page meta
-    pageTitle: 'Free Journeyman Electrician Practice Quiz — VoltPal',
-    metaDescription:
-      'Free 10-question journeyman electrician practice quiz with full explanations. Built by VoltPal, the AI field companion for electricians.',
-    ogDescription: 'See where you stand for the journeyman electrician exam in 5 minutes.',
+    pageTitle: ({ certName }) => `Free ${certName} Electrician Practice Quiz — VoltPal`,
+    metaDescription: ({ certName }) =>
+      `Free 10-question ${certName} electrician practice quiz with full explanations. Built by VoltPal, the AI field companion for electricians.`,
+    ogDescription: ({ certName }) =>
+      `See where you stand for the ${certName} electrician exam in 5 minutes.`,
   },
 
   es: {
     // Hero
-    heroTitle: 'Examen Gratis de Práctica Journeyman',
+    heroTitle: ({ certName }) => `Examen Gratis de Práctica ${certName}`,
     heroSubtitle: ({ certName }) =>
-      `10 preguntas. 5 minutos. Mira en qué nivel estás para el examen ${certName} de electricista — con explicaciones para cada respuesta.`,
+      `10 preguntas. 5 minutos. Mira en qué nivel estás para el examen ${certName} — con explicaciones para cada respuesta.`,
     heroStart: 'Comenzar Examen →',
     heroFooter: 'Hecho por VoltPal — el asistente AI de campo para electricistas.',
 
@@ -81,8 +86,8 @@ export const STRINGS = {
 
     // Email gate
     gateHeadline: 'Vas bien — ¿quieres que te enviemos tus resultados completos por correo?',
-    gateBody:
-      'Te enviaremos tu puntaje, la explicación de cada respuesta y una guía gratuita de estudio para el examen Journeyman. Sin spam, te puedes dar de baja cuando quieras.',
+    gateBody: ({ certName }) =>
+      `Te enviaremos tu puntaje, la explicación de cada respuesta y una guía gratuita de estudio para el examen ${certName}. Sin spam, te puedes dar de baja cuando quieras.`,
     gateEmailPlaceholder: 'tu@correo.com',
     gateSubmit: 'Enviar Mis Resultados →',
     gateSubmitting: 'Guardando…',
@@ -93,9 +98,11 @@ export const STRINGS = {
 
     // Results
     yourScore: 'Tu Puntaje',
-    abovePassMark: ({ percent }) => `${percent}% — Arriba del puntaje mínimo Journeyman (70%)`,
-    belowPassMark: ({ percent }) => `${percent}% — Abajo del puntaje mínimo Journeyman (70%)`,
-    ctaHeadline: 'Obtén el banco completo Journeyman + tutor AI',
+    abovePassMark: ({ percent, certName, passPercent }) =>
+      `${percent}% — Arriba del puntaje mínimo ${certName} (${passPercent}%)`,
+    belowPassMark: ({ percent, certName, passPercent }) =>
+      `${percent}% — Abajo del puntaje mínimo ${certName} (${passPercent}%)`,
+    ctaHeadline: ({ certName }) => `Obtén el banco completo ${certName} + tutor AI`,
     ctaBody:
       'VoltPal te explica cada respuesta incorrecta, identifica tus áreas débiles y corre simulacros completos cronometrados. Prueba gratis, cancela cuando quieras.',
     ctaPrimary: 'Prueba VoltPal Pro Gratis →',
@@ -118,10 +125,11 @@ export const STRINGS = {
       'Nota: Algunas preguntas se muestran en inglés mientras completamos las traducciones.',
 
     // Page meta
-    pageTitle: 'Examen Gratis de Práctica Journeyman — VoltPal',
-    metaDescription:
-      'Examen gratuito de 10 preguntas para electricistas Journeyman con explicaciones completas. Hecho por VoltPal, el asistente AI de campo para electricistas.',
-    ogDescription: 'Mira en qué nivel estás para el examen Journeyman en 5 minutos.',
+    pageTitle: ({ certName }) => `Examen Gratis de Práctica ${certName} — VoltPal`,
+    metaDescription: ({ certName }) =>
+      `Examen gratuito de 10 preguntas para electricistas ${certName} con explicaciones completas. Hecho por VoltPal.`,
+    ogDescription: ({ certName }) =>
+      `Mira en qué nivel estás para el examen ${certName} en 5 minutos.`,
   },
 };
 

@@ -26,8 +26,14 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/journeyman-practice" element={<PublicQuiz lang="en" />} />
-        <Route path="/es/journeyman-practice" element={<PublicQuiz lang="es" />} />
+        <Route path="/apprentice-practice" element={<PublicQuiz cert="apprentice" lang="en" />} />
+        <Route path="/es/apprentice-practice" element={<PublicQuiz cert="apprentice" lang="es" />} />
+        <Route path="/journeyman-practice" element={<PublicQuiz cert="journeyman" lang="en" />} />
+        <Route path="/es/journeyman-practice" element={<PublicQuiz cert="journeyman" lang="es" />} />
+        <Route path="/master-practice" element={<PublicQuiz cert="master" lang="en" />} />
+        <Route path="/es/master-practice" element={<PublicQuiz cert="master" lang="es" />} />
+        <Route path="/nfpa-70e-practice" element={<PublicQuiz cert="nfpa-70e" lang="en" />} />
+        <Route path="/es/nfpa-70e-practice" element={<PublicQuiz cert="nfpa-70e" lang="es" />} />
         <Route
           path="/"
           element={
