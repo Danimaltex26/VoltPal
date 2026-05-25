@@ -45,9 +45,6 @@ export default function AnalysisPage() {
   const [error, setError] = useState('');
   const [queued, setQueued] = useState(false);
   const fileInputRef = useRef(null);
-  // Separate input with capture="environment" so Android shows the camera directly.
-  // Without it, many Android browsers fall back to a files/gallery picker only.
-  const cameraInputRef = useRef(null);
   const offlineQueue = useOfflineQueue();
 
   async function handleUpload(e) {
@@ -63,7 +60,6 @@ export default function AnalysisPage() {
       await offlineQueue.enqueue(files, analysisType);
       setQueued(true);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      if (cameraInputRef.current) cameraInputRef.current.value = '';
       return;
     }
 
@@ -91,7 +87,6 @@ export default function AnalysisPage() {
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
   }
 
@@ -598,10 +593,8 @@ export default function AnalysisPage() {
           </select>
         </div>
 
-        {/* Upload Area — two explicit buttons (Take Photo / Choose from Library)
-            so Android shows the camera reliably. Drag-drop still works on the
-            outer container. */}
-        <div
+        {/* Upload Area */}
+        <label
           style={{
             display: 'flex',
             flexDirection: 'column',
@@ -611,6 +604,7 @@ export default function AnalysisPage() {
             minHeight: 220,
             border: '2px dashed #2A2A2E',
             borderRadius: 16,
+            cursor: 'pointer',
             padding: '2rem',
             textAlign: 'center',
             transition: 'border-color 0.15s',
@@ -635,29 +629,11 @@ export default function AnalysisPage() {
           </svg>
           <div>
             <p style={{ fontSize: '1.0625rem', fontWeight: 600 }}>
-              {navigator.onLine ? 'Add a photo to analyze' : 'Capture and queue a photo'}
+              {navigator.onLine ? 'Tap to upload or take a photo' : 'Tap to capture and queue a photo'}
             </p>
             <p className="text-muted" style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>
               Photo of panels, wiring, motors, or equipment (up to 4)
             </p>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center' }}>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => cameraInputRef.current?.click()}
-              style={{ backgroundColor: '#FACC15', color: '#0f0f10', border: 'none', minWidth: 160 }}
-            >
-              📷 Take Photo
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => fileInputRef.current?.click()}
-              style={{ minWidth: 180 }}
-            >
-              📁 Choose from Library
-            </button>
           </div>
           <input
             ref={fileInputRef}
@@ -667,15 +643,7 @@ export default function AnalysisPage() {
             onChange={handleUpload}
             style={{ display: 'none' }}
           />
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleUpload}
-            style={{ display: 'none' }}
-          />
-        </div>
+        </label>
 
         {/* Offline Queue */}
         <OfflineQueue
