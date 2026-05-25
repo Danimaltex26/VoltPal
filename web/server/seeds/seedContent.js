@@ -13,18 +13,53 @@ const supabase = createClient(
 
 const anthropic = new Anthropic();
 
-const SYSTEM_PROMPT = "You are an expert electrical certification instructor with 20+ years of experience training electricians at all levels from apprentice through master electrician and NFPA 70E qualified persons. You have deep knowledge of the NEC (NFPA 70), NFPA 70E, OSHA electrical standards, IEEE 1584, and state licensing requirements.\n\nGenerate learning content sections for a training module. Each section should teach a specific concept in depth — written for working electricians, not academics. Use real-world examples, actual NEC article references, and practical field context.\n\nReturn ONLY a valid JSON array with 5 sections. No preamble, no markdown fences, no explanation outside the JSON. Each element:\n{\n  \"section_number\": 1,\n  \"section_title\": \"string — clear, descriptive title\",\n  \"content_type\": \"concept | example | formula | tip\",\n  \"content_text\": \"string — 150-300 words of instructional content. Use real NEC articles, actual values, and practical explanations. Write in a direct, professional tone.\",\n  \"standard_reference\": \"string or null — e.g. NEC Article 210.8, NFPA 70E Table 130.7(C)(15)\"\n}\n\nCONTENT TYPE GUIDELINES:\n- concept: Core instructional material explaining how something works, why it matters, and key code values\n- example: A realistic field scenario showing the concept in practice — include specific wire sizes, breaker ratings, or load calculations\n- formula: Mathematical relationships with worked examples using real values (Ohms law, load calcs, voltage drop, conduit fill)\n- tip: Practical field advice that comes from experience — things an apprentice might not know\n\nRULES:\n- Every section must be independently useful — no \"as we discussed\" references\n- Use actual NEC article numbers and table references from the current code cycle\n- Include specific wire gauges, breaker sizes, conduit types, or equipment where relevant\n- Write for comprehension, not memorization — explain the WHY behind each code requirement\n- Section 1 should introduce the core concept\n- Section 5 should be a practical tip or field example that ties everything together\n- Vary content_type across sections — don't make all 5 the same type";
+const SYSTEM_PROMPT = `You are an expert electrical certification instructor with 20+ years of experience training electricians at all levels from apprentice through master electrician and NFPA 70E qualified persons. You have deep knowledge of the NEC (NFPA 70), NFPA 70E, OSHA electrical standards, IEEE 1584, and state licensing requirements.
+
+Generate learning content sections for a training module. Each section should teach a specific concept in depth — written for working electricians, not academics. Use real-world examples, actual NEC article references, and practical field context.
+
+Return ONLY a valid JSON array with 8 sections. No preamble, no markdown fences, no explanation outside the JSON. Each element:
+{
+  "section_number": 1,
+  "section_title": "string — clear, descriptive title",
+  "content_type": "concept | example | formula | tip | code_reference",
+  "content_text": "string — 200-400 words of instructional content. Use real NEC articles, actual values, and practical explanations. Write in a direct, professional tone.",
+  "standard_reference": "string or null — e.g. NEC Article 210.8, NFPA 70E Table 130.7(C)(15), IEEE 1584"
+}
+
+CONTENT TYPE GUIDELINES:
+- concept: Core instructional material explaining how something works, why it matters, and key code values
+- example: A realistic field scenario showing the concept in practice — include specific wire sizes, breaker ratings, conduit types, or load calculations
+- formula: Mathematical relationships with worked examples using real values — Ohm's law, voltage drop, conduit fill, load calculations, fault current
+- tip: Practical field advice that comes from experience — things an apprentice might not know
+- code_reference: A specific NEC article or NFPA 70E requirement with the actual section/table number, what it requires, and why it matters in practice
+
+RULES:
+- Generate exactly 8 sections
+- Every listed topic in the module MUST get its own dedicated section — do NOT bundle multiple topics into a single section
+- Every section must be independently useful — no "as we discussed" references
+- Use actual NEC article numbers and table references from the current code cycle (e.g., NEC 210.8(A) GFCI requirements, Table 310.16 conductor ampacities, not vague generalities)
+- Include specific wire gauges, breaker sizes, conduit types, or equipment where relevant
+- Write for comprehension, not memorization — explain the WHY behind each code requirement
+- At least one section must be content_type "tip" with practical field advice
+- At least one section must be content_type "code_reference" citing a specific NEC article or NFPA 70E section
+- At least one section must include an "example" with a realistic field scenario
+- Vary content_type across sections — use at least 3 different types
+- Content should be 200-400 words per section, not shorter`;
 
 async function generateContent(certLevel, moduleTitle, topicList) {
   const topicStr = topicList.join(", ");
-  const userPrompt = "Generate 5 learning content sections for the " + certLevel + " certification module: \"" + moduleTitle + "\"\n\nTopics to cover: " + topicStr + "\n\nWrite content that would prepare an electrician for the " + certLevel + " certification exam while giving them practical field knowledge.";
+  const userPrompt = `Generate 8 learning content sections for the ${certLevel} certification module: "${moduleTitle}"
+
+Topics to cover (each topic MUST have its own dedicated section): ${topicStr}
+
+Write content that would prepare an electrician for the ${certLevel} certification exam while giving them practical field knowledge. Use real NEC references, actual specification values, and field-tested advice.`;
 
   let retries = 0;
   while (retries < 3) {
     try {
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 8192,
+        max_tokens: 16384,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
       });
@@ -44,7 +79,10 @@ async function generateContent(certLevel, moduleTitle, topicList) {
 
       if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Empty array");
 
-      return parsed.filter(s => s.section_number && s.section_title && s.content_type && s.content_text);
+      const valid = parsed.filter(s => s.section_number && s.section_title && s.content_type && s.content_text);
+      if (valid.length < 6) throw new Error(`Only ${valid.length} valid sections returned`);
+
+      return valid;
     } catch (err) {
       retries++;
       if (retries >= 3) { console.error("    [FAIL] " + moduleTitle + ": " + err.message); return []; }
@@ -71,7 +109,7 @@ async function main() {
   let totalSeeded = 0;
   for (const mod of modules) {
     const { count } = await supabase.from("training_content").select("*", { count: "exact", head: true }).eq("module_id", mod.id);
-    if (count >= 4) { console.log("[skip] " + mod.cert_level + " M" + mod.module_number + ": " + mod.title + " — " + count + " sections"); continue; }
+    if (count >= 7) { console.log("[skip] " + mod.cert_level + " M" + mod.module_number + ": " + mod.title + " — " + count + " sections"); continue; }
 
     console.log("[gen] " + mod.cert_level + " M" + mod.module_number + ": " + mod.title + "...");
     const sections = await generateContent(mod.cert_level, mod.title, mod.topic_list);

@@ -45,7 +45,7 @@ router.get("/modules/:certLevel", async (req, res) => {
 
     // Get total section counts per module
     const { data: sectionCounts, error: secErr } = await supabase
-      .from("training_content")
+      .from("training_module_content")
       .select("module_id")
       .in("module_id", moduleIds);
 
@@ -110,10 +110,11 @@ router.get("/module/:moduleId", async (req, res) => {
 
     if (modErr) throw modErr;
 
-    // Fetch content sections
+    // Fetch content sections (alias new schema fields to legacy client shape:
+    // content_markdown→content_text, section_type→content_type)
     const { data: sections, error: secErr } = await supabase
-      .from("training_content")
-      .select("*")
+      .from("training_module_content")
+      .select("id, module_id, section_number, section_title, content_type:section_type, content_text:content_markdown, estimated_read_minutes")
       .eq("module_id", moduleId)
       .order("section_number", { ascending: true });
 
@@ -205,7 +206,7 @@ router.post("/module/:moduleId/complete-section", async (req, res) => {
 
     // Count total sections for this module
     const { count: totalSections, error: countErr } = await supabase
-      .from("training_content")
+      .from("training_module_content")
       .select("id", { count: "exact", head: true })
       .eq("module_id", moduleId);
 
