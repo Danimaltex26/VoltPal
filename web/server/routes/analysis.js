@@ -113,14 +113,17 @@ router.post("/", auth, upload.array("images", 4), async (req, res) => {
       return res.json({ result, saved: false, save_error: saveError.message, model: analysisResult.model });
     }
 
-    // Only send email for offline-queued analyses
+    // Only send email for offline-queued analyses.
+    // Await it: on Vercel serverless the function is frozen once res.json() returns,
+    // so a fire-and-forget send never completes. .catch logs (not swallows) so a
+    // send failure is visible but doesn't 500 the analysis response.
     if (req.body.queued) {
-      sendAnalysisReadyEmail({
+      await sendAnalysisReadyEmail({
         to: req.user.email,
         appKey: "voltpal",
         displayName: req.profile.display_name,
         analysisType: result.image_type || analysis_type || "general",
-      }).catch(() => {});
+      }).catch((err) => console.error("sendAnalysisReadyEmail failed:", err));
     }
 
     return res.json({ result, record_id: saved.id, model: analysisResult.model });
