@@ -365,7 +365,11 @@ router.post("/submit", async (req, res) => {
         user_agent: req.get("user-agent") || null,
       });
 
-      sendQuizResultsEmail({
+      // Await the send: on Vercel serverless the function is frozen/killed once
+      // res.json() returns, so a fire-and-forget Resend call never completes and
+      // the email silently drops. .catch keeps a send failure from 500-ing the
+      // response (resolves to undefined), so results still return on email error.
+      await sendQuizResultsEmail({
         to: session.email,
         source: session.source,
         score: correct,
